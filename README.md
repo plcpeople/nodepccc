@@ -13,9 +13,9 @@ On a CompactLogix or ControlLogix, you must go to the "Tools" menu in Logix 5000
 
 It is optimized in two ways - it sorts a large number of items being requested from the PLC and decides what overall data areas to request.  It does not yet group multiple small requests together in a single packet, which is apparently possible.  It does, however, send 2 packets at once, for speed, and this number could potentially be increased.   So a request for 100 different bits, all close (but not necessarily completely contiguous) will be grouped in one single request to the PLC, with no additional direction from the user.  Its optimizations are not likely tuned as well as some commercial OPC servers, however.
 
-PCCC manages reconnects for you.  So if the connection is lost because the PLC is powered down or disconnected, you can continue to request data with no other action necessary.  "Bad" values are returned, and eventually the connection will be automatically restored.
+nodePCCC manages reconnects for you.  So if the connection is lost because the PLC is powered down or disconnected, you can continue to request data with no other action necessary.  "Bad" values are returned, and eventually the connection will be automatically restored.
 
-PCCC is written entirely in Javascript, so no compiler installation is necessary on Windows, and deployment on other platforms (ARM, etc) should be no problem.
+nodePCCC is written entirely in Javascript, so no compiler installation is necessary on Windows, and deployment on other platforms (ARM, etc) should be no problem.
 
 This was developed using Wireshark to help with packet format.  Allen Bradley's own documentation was helpful as well, such as the "DF1 manual".
 
