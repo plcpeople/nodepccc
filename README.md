@@ -122,8 +122,9 @@ Sets a callback for name - address translation.
 This is optional - you can choose to use "addItem" etc with absolute addresses.
 
 If you use it, `translator` should be a function that takes a string as an argument, and returns a string in the following format:
-- <type specifier><file number - I assumed 1, O assumed 0, S assumed 2>:<element>[</bit> or </DN, /EN, /TT> or <.ACC, .PRE>]
-- Examples:
+`<type specifier><file number - I assumed 1, O assumed 0, S assumed 2>:<element>[</bit> or </DN, /EN, /TT> or <.ACC, .PRE>]`
+
+Examples:
 - F8:30
 - N7:12
 - L9:1 - long integer is MicroLogix/ControlLogix/CompactLogix only
