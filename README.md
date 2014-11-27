@@ -11,6 +11,8 @@ If you are using with a ControlLogix and possibly some CompactLogix, you likely 
 
 On a CompactLogix or ControlLogix, you must go to the "Tools" menu in Logix 5000 and "Map PLC5/SLC messages" to map an array of values (only Float/Int/DINT have been tested) to a "file number" and then request that file number preferably with the corresponding type.   So if you create a variable called THEINTEGER with type INT[10] then map it to file 7 and download, you can request N7:0 to get the first element, and so on. 
 
+Note that it is currently not possible to write to bits above 15 (most-significant word) in a long integer as the PCCC read-modify-write command appears to not support this.  You must write the entire DINT or use bits within an INT.
+
 It is optimized in two ways - it sorts a large number of items being requested from the PLC and decides what overall data areas to request.  It does not yet group multiple small requests together in a single packet, which is apparently possible.  It does, however, send 2 packets at once, for speed, and this number could potentially be increased.   So a request for 100 different bits, all close (but not necessarily completely contiguous) will be grouped in one single request to the PLC, with no additional direction from the user.  Its optimizations are not likely tuned as well as some commercial OPC servers, however.
 
 nodePCCC manages reconnects for you.  So if the connection is lost because the PLC is powered down or disconnected, you can continue to request data with no other action necessary.  "Bad" values are returned, and eventually the connection will be automatically restored.
@@ -122,16 +124,19 @@ Sets a callback for name - address translation.
 This is optional - you can choose to use "addItem" etc with absolute addresses.
 
 If you use it, `translator` should be a function that takes a string as an argument, and returns a string in the following format:
-`<type specifier><file number - I assumed 1, O assumed 0, S assumed 2>:<element>[</bit> or </DN, /EN, /TT> or <.ACC, .PRE>]`
+`<type specifier><file number - I assumed 1, O assumed 0, S assumed 2>:<element>[</bit> or </DN, /EN, /TT> or <.ACC, .PRE>],array length`
 
 Examples:
 - F8:30
+- F8:0,10 - array of 10 floating point numbers
 - N7:12
 - L9:1 - long integer is MicroLogix/ControlLogix/CompactLogix only
 - N7:12/1 - second bit in the word
 - B3:6/6
 - T4:6.ACC - timer accumulator
 - C5:1.PRE - counter preset
+
+Note that some values are not supported in an array - timer presets and accumulators are an example.
 
 In the example above, an object is declared and the `translator` references that object.  It could just as reference a file or database.  In any case, it allows cleaner Javascript code to be written that refers to a name instead of an absolute address.  
 
