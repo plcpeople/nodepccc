@@ -27,7 +27,8 @@ To get started:
 
 Example usage:
 
-	var conn = require('nodepccc');
+	var nodepccc = require('nodepccc');
+	var conn = new nodepccc;
 	var doneReading = false;
 	var doneWriting = false;
 
