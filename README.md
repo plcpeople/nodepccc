@@ -51,9 +51,10 @@ Example usage:
 		conn.readAllItems(valuesReady);	
 	}
 
-	function valuesReady(anythingBad) {
+	function valuesReady(anythingBad, values) {
 		if (anythingBad) { console.log("SOMETHING WENT WRONG READING VALUES!!!!"); }
-		console.log("Value is " + conn.findItem('TEST1').value + " quality is " + conn.findItem('TEST1').quality);
+		console.log(values);
+	// alternative syntax		console.log("Value is " + conn.findItem('TEST1').value + " quality is " + conn.findItem('TEST1').quality);
 		doneReading = true;
 		if (doneWriting) { process.exit(); }
 	}
@@ -91,6 +92,30 @@ Example usage:
 		}
 	}
 
+This returns some diagnostic output as well as the following:
+
+	{ TEST1: 30724,
+	  TEST4: 
+	   [ 867530.875,
+	     1,
+	     97.0999984741211,
+	     2.9000000953674316,
+	     97,
+	     0,
+	     0,
+	     19,
+	     0,
+	     0,
+	     0,
+	     0,
+	     0,
+	     0,
+	     0,
+	     0,
+	     0,
+	     0,
+	     0,
+	     0 ] }
 
 ### API
  - [initiateConnection()](#initiate-connection)
@@ -100,6 +125,7 @@ Example usage:
  - [removeItems()](#remove-items)
  - [writeItems()](#write-items)
  - [readAllItems()](#read-all-items)
+ - [findItem()](#find-item)
 
 
 #### <a name="initiate-connection"></a>nodepccc.initiateConnection(params, callback)
@@ -156,8 +182,12 @@ Writes `items` to the PLC using the corresponding `values`.
 
 `items` can be a string or an array of strings.  If `items` is a single string, `values` should then be a single item (or an array if `items` is an array item).  If `items` is an array of strings, `values` must be an array.
 
-
 #### <a name="read-all-items"></a>nodepccc.readAllItems(callback)
 Reads the internal polling list and calls `callback` when done.  
 
 `callback(err, values)` is called with two arguments - a boolean indicating if ANY of the items have "bad quality", and `values`, an object containing the values being read as keys and their value (from the PLC) as the value.
+
+#### <a name="find-item"></a>nodepccc.findItem(item)
+Returns the item object being searched for (by iterating through the array of items), or undefined if it isn't found in the item list.  This allows accessing item.value and item.quality.
+
+
