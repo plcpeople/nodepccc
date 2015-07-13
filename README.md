@@ -160,10 +160,13 @@ Examples:
 - L9:1 - long integer is MicroLogix/ControlLogix/CompactLogix only
 - N7:12/1 - second bit in the word
 - B3:6/6
-- T4:6.ACC - timer accumulator
-- C5:1.PRE - counter preset
+- T4:6.ACC - timer accumulator - read/write
+- C5:1.PRE - counter preset - read/write
+- T4:0,20 - array of timers - will return an array of objects representing 20 timers - READ ONLY
+- R6:0.LEN - control length - read/write
+- R6:0 - control structure - will return a JS object - READ ONLY
 
-Note that some values are not supported in an array - timer presets and accumulators are an example.
+Note that some values are not supported in an array - timer presets and accumulators are an example, but entire timers are fine for READ ONLY.
 
 In the example above, an object is declared and the `translator` references that object.  It could just as reference a file or database.  In any case, it allows cleaner Javascript code to be written that refers to a name instead of an absolute address.  
 

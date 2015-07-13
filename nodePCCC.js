@@ -1570,7 +1570,7 @@ function writePostProcess(theItem) {
 
 function processSLCReadItem(theItem) {
 	
-	var thePointer = 0;
+	var thePointer = 0,strLength;
 	
 	if (theItem.arrayLength > 1) {
 		// Array value.  
@@ -1625,9 +1625,13 @@ function processSLCReadItem(theItem) {
 					break;
 				case "TIMER":
 				case "COUNTER":
-					theItem.value.push(theItem.byteBuffer.readInt16LE(thePointer));
+				case "CONTROL":
+					theItem.value.push(toABStructure(theItem.byteBuffer, thePointer, theItem.datatype));
 					break;
-			
+				case "STRING":
+					strLength = Math.min(theItem.byteBuffer.readUInt8(thePointer), 82);
+					theItem.value.push(strSwap(theItem.byteBuffer.toString('ascii',2+thePointer,2+thePointer+strLength)));
+					break;
 				default:
 					outputLog("Unknown data type in response - should never happen.  Should have been caught earlier.  " + theItem.datatype);
 					return 0;		
@@ -1690,9 +1694,19 @@ function processSLCReadItem(theItem) {
 				// No support as of yet for signed 8 bit.  This isn't that common in Siemens.  
 				theItem.value = String.fromCharCode(theItem.byteBuffer.readUInt8(thePointer));
 				break;
+			case "STRING":
+				strLength = Math.min(theItem.byteBuffer.readUInt8(thePointer), 82);
+				theItem.value = strSwap(theItem.byteBuffer.toString('ascii',2+thePointer,2+thePointer+strLength));
+				break;
+
 			case "TIMER":
 			case "COUNTER":
-				theItem.value = theItem.byteBuffer.readInt16LE(thePointer + theItem.byteOffset);
+			case "CONTROL":
+				if (theItem.byteOffset >= 0) {
+					theItem.value = theItem.byteBuffer.readInt16LE(thePointer + theItem.byteOffset);
+				} else {
+					theItem.value = toABStructure(theItem.byteBuffer, thePointer, theItem.datatype);
+				}
 				break;			
 			default:
 				outputLog("Unknown data type in response - should never happen.  Should have been caught earlier.  " + theItem.datatype);
@@ -1710,8 +1724,29 @@ function processSLCReadItem(theItem) {
 	return thePointer; // Should maybe return a value now???
 }
 
+function strSwap(str) {
+	var newStr = '', i;
+	if (str && str.constructor == String) {
+		for (i=0;i<(str.length+(str.length % 2));i++) {
+			if (i % 2) { // if odd
+				newStr = newStr.concat(str.substr(i-1,1));
+
+			} else {
+				if (i < (str.length-1)) {
+					newStr = newStr.concat(str.substr(i+1,1));
+				} else {
+					newStr = newStr.concat(String.fromCharCode(0));
+				}
+
+			}
+		}
+		return newStr;
+	}
+	return str;
+}
+
 function bufferizePCCCItem(theItem) {	
-	var thePointer, theByte;
+	var thePointer, theByte, strLength;
 	theByte = 0;
 	thePointer = 0; // After length and header
 	
@@ -1753,9 +1788,18 @@ function bufferizePCCCItem(theItem) {
 					break;
 				case "TIMER":
 				case "COUNTER":
-					// I didn't think we supported arrays of timers and counters.
-					theItem.writeBuffer.writeInt16LE(theItem.writeValue[arrayIndex], thePointer);
-					break;			
+				case "CONTROL":
+					// We don't support writing arrays of timers and counters.  Read array but write individual.
+					//theItem.writeBuffer.writeInt16LE(theItem.writeValue[arrayIndex], thePointer);
+					//break;
+					outputLog("Please don't write arrays of timers or counters or control.  Write individual words/bits.");
+					return 0;
+				case "STRING":
+					strLength = Math.min(theItem.writeValue[arrayIndex].length,82);
+					theItem.writeBuffer.writeUInt8(strLength,thePointer);
+					theItem.writeBuffer.writeUInt8(0,thePointer+1);
+					theItem.writeBuffer.write(strSwap(theItem.writeValue[arrayIndex]),thePointer+2,(strLength % 2) ? strLength + 1 : strLength,'ascii');
+					break;
 				default:
 					outputLog("Unknown data type when preparing array write packet - should never happen.  Should have been caught earlier.  " + theItem.datatype);
 					return 0;		
@@ -1812,8 +1856,15 @@ function bufferizePCCCItem(theItem) {
 				break;
 			case "TIMER":
 			case "COUNTER":
+			case "CONTROL":
 				theItem.writeBuffer.writeInt16LE(theItem.writeValue, thePointer);
-				break;			
+				break;
+			case "STRING":
+				strLength = Math.min(theItem.writeValue.length,82);
+				theItem.writeBuffer.writeUInt8(strLength,thePointer);
+				theItem.writeBuffer.writeUInt8(0,thePointer+1);
+				theItem.writeBuffer.write(strSwap(theItem.writeValue),thePointer+2,(strLength % 2) ? strLength + 1 : strLength,'ascii');
+				break;
 			default:
 				outputLog("Unknown data type in write prepare - should never happen.  Should have been caught earlier.  " + theItem.datatype);
 				return 0;		
@@ -1905,7 +1956,7 @@ function SLCAddrToBufferAA(addrinfo) {
 		return SLCAddrToBufferAB(addrinfo);
 	}
 
-	writeLength = isBit ? 1 : addrinfo.byteLength;
+	writeLength = isBit ? 1 : addrinfo.writeByteLength;
 	
 	PCCCCommand[1] = writeLength;  // On ethernet this is max 225 bytes.  Don't request more than this.  
 
@@ -2106,46 +2157,66 @@ function stringToSLCAddr(addr, useraddr) {
 		theItem.bitOffset = 0;
 	}
 
-	theItem.andmask = 0;
 	theItem.dtypelen = -1;
 	theItem.byteOffset = -1;
 		
 	if (postDotAlpha && postDotAlpha.length > 0) {
 		switch(postDotAlpha) {
-		case "PRE":
+		case "PRE":		// T,C type
+		case "LEN":		// R type
 			theItem.subelement = 1;
 			theItem.bitOffset = 1;
-			theItem.dtypelen = 2;
 			theItem.byteOffset = 2;
 			break;
-		case "ACC":
+		case "ACC":		// T,C type
+		case "POS":		// R type
 			theItem.subelement = 2;
 			theItem.bitOffset = 2;
-			theItem.dtypelen = 6;
 			theItem.byteOffset = 4;
 			break;
-		case "EN":
-		case "CU":
+		case "EN":		// T,R type
+		case "CU":		// C type
 			theItem.subelement = 0;
-			theItem.andmask = 1;
 			theItem.bitOffset = 15;
-			theItem.dtypelen = 6;
 			forceBitDtype = true;
 			break;
-		case "TT":
-		case "EU":
-		case "CD":
+		case "TT":		// T type
+		case "EU":		// R type
+		case "CD":		// C type
 			theItem.subelement = 0;
-			theItem.andmask = 2;
 			theItem.bitOffset = 14;
-			theItem.dtypelen = 6;
 			forceBitDtype = true;
 			break;
-		case "DN":
+		case "DN":		// C,R,T type
 			theItem.subelement = 0;
-			theItem.andmask = 4;
 			theItem.bitOffset = 13;
-			theItem.dtypelen = 6;
+			forceBitDtype = true;
+			break;
+		case "OV":		// C type
+		case "EM":		// R type
+			theItem.subelement = 0;
+			theItem.bitOffset = 12;
+			forceBitDtype = true;
+			break;
+		case "UN":		// C type
+		case "ER":		// R type
+			theItem.subelement = 0;
+			theItem.bitOffset = 11;
+			forceBitDtype = true;
+			break;
+		case "UL":		// R type
+			theItem.subelement = 0;
+			theItem.bitOffset = 10;
+			forceBitDtype = true;
+			break;
+		case "IN":		// R type
+			theItem.subelement = 0;
+			theItem.bitOffset = 10;
+			forceBitDtype = true;
+			break;
+		case "FD":		// R type
+			theItem.subelement = 0;
+			theItem.bitOffset = 10;
 			forceBitDtype = true;
 			break;
 		default:
@@ -2187,9 +2258,17 @@ function stringToSLCAddr(addr, useraddr) {
 		theItem.datatype = "COUNTER";
 		theItem.multidtypelen = 6;
 		break;
-	case "R":	// TODO - support this.
+	case "ST":
+		theItem.addrtype = prefix;
+		theItem.datatype = "STRING";
+		theItem.multidtypelen = 84;
+		break;
+	case "R":
+		theItem.addrtype = prefix;
+		theItem.datatype = "CONTROL";
+		theItem.multidtypelen = 6;
+		break;
 	case "A":	// TODO - support this.
-	case "S":	// TODO - support this.
 	default:
 		outputLog('Failed to find a match for ' + splitString2[0] + ' possibly because ' + prefix + ' type is not supported yet.');
 		return undefined;
@@ -2232,24 +2311,18 @@ function stringToSLCAddr(addr, useraddr) {
 		break;
 	case "T":
 		theItem.areaPCCCCode = 0x86;
-		if (theItem.dtypelen < 0) {
-			theItem.dtypelen = 6;
-		}
-//		theItem.dtypelen = 2;			// Might have to vary this based on subelement.
+		theItem.dtypelen = 6;
+		theItem.writeDtypelen = 2;
 		break;
 	case "C":
 		theItem.areaPCCCCode = 0x87;
-//		theItem.dtypelen = 2;			// Might have to vary this based on subelement.
-		if (theItem.dtypelen < 0) {
-			theItem.dtypelen = 6;
-		}
+		theItem.dtypelen = 6;
+		theItem.writeDtypelen = 2;
 		break;
 	case "R":
 		theItem.areaPCCCCode = 0x88;
-//		theItem.dtypelen = 2;			// Might have to vary this based on subelement.
-		if (theItem.dtypelen < 0) {
-			theItem.dtypelen = 6;
-		}
+		theItem.dtypelen = 6;
+		theItem.writeDtypelen = 2;
 		break;
 	case "N":
 		theItem.areaPCCCCode = 0x89;
@@ -2271,9 +2344,9 @@ function stringToSLCAddr(addr, useraddr) {
 		theItem.areaPCCCCode = 0x8c;
 		theItem.dtypelen = 2;			// Might have to vary this based on subelement.
 		break;		
-	case "S":
+	case "ST":
 		theItem.areaPCCCCode = 0x8d;
-		theItem.dtypelen = 2;			// Might have to vary this based on subelement.
+		theItem.dtypelen = 84;			// 42 words is 84 bytes including the length byte
 		break;
 	case "A":
 		theItem.areaPCCCCode = 0x8e;
@@ -2302,9 +2375,16 @@ function stringToSLCAddr(addr, useraddr) {
 
 	if (theItem.datatype === 'X') {
 		theItem.byteLength = Math.ceil((theItem.bitOffset + theItem.arrayLength) / 8);
+		theItem.writeByteLength = theItem.byteLength;
 		if (theItem.byteLength % 2) { theItem.byteLength += 1; }  // Always even for AB
 	} else {
 		theItem.byteLength = theItem.arrayLength * theItem.dtypelen;
+		if (typeof(theItem.writeDtypelen) !== 'undefined') {
+			// The write length is different for timers, counters and controls where we read 6 elements always (to support arrays) but write the subelement.
+			theItem.writeByteLength = theItem.arrayLength * theItem.writeDtypelen;
+		} else {
+			theItem.writeByteLength = theItem.byteLength;
+		}
 	}
 
 //	outputLog(' Arr lenght is ' + theItem.arrayLength + ' and DTL is ' + theItem.dtypelen);
@@ -2361,9 +2441,11 @@ function PLCItem() { // Object
 
 	// These next properties can be calculated from the above properties, and may be converted to functions.
 	this.dtypelen = undefined;
+	this.writeDtypelen = undefined;
 	this.multidtypelen = undefined; // multi-datatype length.  Different than dtypelen when requesting a timer preset, for example, which has width two but dtypelen of 2.
 	this.areaS7Code = undefined;
 	this.byteLength = undefined;
+	this.writeByteLength = undefined;
 	this.byteLengthWithFill = undefined;
 	
 	// Note that read transport codes and write transport codes will be the same except for bits which are read as bytes but written as bits
@@ -2416,6 +2498,7 @@ function PLCItem() { // Object
 		case "BYTE":
 		case "TIMER":
 		case "COUNTER":
+		case "CONTROL":
 			return 0;
 		case "X":
 			return false;
@@ -2450,4 +2533,39 @@ function itemListSorter(a, b) {
 
 function doNothing(arg) {
 	return arg;
+}
+
+function toABStructure(buf, offset, type) {
+	var bits,retval = {};
+	if (!buf) { return retval; }
+	bits = buf.readInt16LE(offset);
+	if (type === "TIMER") {
+		retval.EN = ((bits & (1 << 15)) > 0);
+		retval.TT = ((bits & (1 << 14)) > 0);
+		retval.DN = ((bits & (1 << 13)) > 0);
+		retval.PRE = buf.readInt16LE(offset+2);
+		retval.ACC = buf.readInt16LE(offset+4);
+	}
+	if (type === "COUNTER") {
+		retval.CU = ((bits & (1 << 15)) > 0);
+		retval.CD = ((bits & (1 << 14)) > 0);
+		retval.DN = ((bits & (1 << 13)) > 0);
+		retval.OV = ((bits & (1 << 12)) > 0);
+		retval.UN = ((bits & (1 << 11)) > 0);
+		retval.PRE = buf.readInt16LE(offset+2);
+		retval.ACC = buf.readInt16LE(offset+4);
+	}
+	if (type === "CONTROL") {
+		retval.EN = ((bits & (1 << 15)) > 0);
+		retval.EU = ((bits & (1 << 14)) > 0);
+		retval.DN = ((bits & (1 << 13)) > 0);
+		retval.EM = ((bits & (1 << 12)) > 0);
+		retval.ER = ((bits & (1 << 11)) > 0);
+		retval.UL = ((bits & (1 << 10)) > 0);
+		retval.IN = ((bits & (1 << 9)) > 0);
+		retval.FD = ((bits & (1 << 8)) > 0);
+		retval.LEN = buf.readInt16LE(offset+2);
+		retval.POS = buf.readInt16LE(offset+4);
+	}
+	return retval;
 }

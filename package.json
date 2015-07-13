@@ -1,7 +1,7 @@
 {
   "name": "nodepccc",
   "description": "Routine to communicate with Allen-Bradley PLCs",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "author": {
     "name": "Dana Moffit",
     "email": "nodejsplc@gmail.com"
