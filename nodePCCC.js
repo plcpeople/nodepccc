@@ -1631,7 +1631,11 @@ function processSLCReadItem(theItem) {
 				case "STRING":
 					strLength = Math.min(theItem.byteBuffer.readUInt8(thePointer), 82);
 					/** ALWAYS USE A BUFFER WITH A PAIR NUMBER OF BYTES */
-					theItem.value.push(strSwap(theItem.byteBuffer.toString('ascii',2+thePointer,2+thePointer+strLength + (strLength % 2))));
+					theItem.value.push(strSwap(theItem.byteBuffer.toString('ascii',2+thePointer,2+thePointer+strLength + (strLength % 2)),strLength));
+					break;
+				case "NSTRING":
+					strLength = Math.min(theItem.byteBuffer.readUInt16LE(thePointer), 82);
+					theItem.value.push(strSwap(theItem.byteBuffer.toString('ascii',4+thePointer,4+thePointer+strLength),strLength));
 					break;
 				default:
 					outputLog("Unknown data type in response - should never happen.  Should have been caught earlier.  " + theItem.datatype);
@@ -1698,9 +1702,12 @@ function processSLCReadItem(theItem) {
 			case "STRING":
 				strLength = Math.min(theItem.byteBuffer.readUInt8(thePointer), 82);
 			        /** ALWAYS USE A BUFFER WITH A PAIR NUMBER OF BYTES */
-				theItem.value = strSwap( theItem.byteBuffer.toString('ascii', 2 + thePointer, 2 + thePointer + strLength + (strLength % 2) ));
+				theItem.value = strSwap( theItem.byteBuffer.toString('ascii', 2 + thePointer, 2 + thePointer + strLength + (strLength % 2) ), strLength);
 				break;
-
+			case "NSTRING":
+				strLength = Math.min(theItem.byteBuffer.readUInt16LE(thePointer), 82);
+				theItem.value = strSwap( theItem.byteBuffer.toString('ascii', 4 + thePointer, 4 + thePointer + strLength + (strLength % 2) ), strLength);
+				break;
 			case "TIMER":
 			case "COUNTER":
 			case "CONTROL":
@@ -1726,7 +1733,7 @@ function processSLCReadItem(theItem) {
 	return thePointer; // Should maybe return a value now???
 }
 
-function strSwap(str) {
+function strSwap(str, origLength) {
 	var newStr = '', i = 0;
 	if (str && str.constructor == String) {
 		while ( i < str.length) {
@@ -1735,7 +1742,7 @@ function strSwap(str) {
 			}else{
 				/** THE LAST 2 CHARACTERS */
 				newStr = newStr.concat(str.substr( i + 1, 1 ));
-				if (str.substr( i, 1) != "\u0000") newStr = newStr.concat(str.substr( i, 1)); 
+				if (str.substr( i, 1) != "\u0000" && !(origLength % 2)) newStr = newStr.concat(str.substr( i, 1)); // Skip for odd length strings
 			}
 			i = i + 2;
 		}
@@ -2262,6 +2269,11 @@ function stringToSLCAddr(addr, useraddr) {
 		theItem.datatype = "STRING";
 		theItem.multidtypelen = 84;
 		break;
+	case "NST": // N as string - special type to read strings moved into an integer array to support CompactLogix read-only.
+		theItem.addrtype = prefix;
+		theItem.datatype = "NSTRING";
+		theItem.multidtypelen = 42;
+		break;
 	case "R":
 		theItem.addrtype = prefix;
 		theItem.datatype = "CONTROL";
@@ -2346,6 +2358,10 @@ function stringToSLCAddr(addr, useraddr) {
 	case "ST":
 		theItem.areaPCCCCode = 0x8d;
 		theItem.dtypelen = 84;			// 42 words is 84 bytes including the length byte
+		break;
+	case "NST": // N as string - special type to read strings moved into an integer array to support CompactLogix read-only.
+		theItem.areaPCCCCode = 0x89;
+		theItem.dtypelen = 42;			// 42 words is 84 bytes including the length byte
 		break;
 	case "A":
 		theItem.areaPCCCCode = 0x8e;

@@ -1,7 +1,7 @@
 {
   "name": "nodepccc",
   "description": "Routine to communicate with Allen-Bradley PLCs",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "author": {
     "name": "Dana Moffit",
     "email": "nodejsplc@gmail.com"
@@ -22,6 +22,7 @@
     "url": "https://github.com/plcpeople/nodepccc"
   },
   "main": "nodePCCC.js",
+  "license": "MIT",
   "dependencies": {
     "underscore": "1.4.x"
   },
