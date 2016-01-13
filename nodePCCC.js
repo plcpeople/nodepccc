@@ -1630,7 +1630,8 @@ function processSLCReadItem(theItem) {
 					break;
 				case "STRING":
 					strLength = Math.min(theItem.byteBuffer.readUInt8(thePointer), 82);
-					theItem.value.push(strSwap(theItem.byteBuffer.toString('ascii',2+thePointer,2+thePointer+strLength)));
+					/** ALWAYS USE A BUFFER WITH A PAIR NUMBER OF BYTES */
+					theItem.value.push(strSwap(theItem.byteBuffer.toString('ascii',2+thePointer,2+thePointer+strLength + (strLength % 2))));
 					break;
 				default:
 					outputLog("Unknown data type in response - should never happen.  Should have been caught earlier.  " + theItem.datatype);
@@ -1696,7 +1697,8 @@ function processSLCReadItem(theItem) {
 				break;
 			case "STRING":
 				strLength = Math.min(theItem.byteBuffer.readUInt8(thePointer), 82);
-				theItem.value = strSwap(theItem.byteBuffer.toString('ascii',2+thePointer,2+thePointer+strLength));
+			        /** ALWAYS USE A BUFFER WITH A PAIR NUMBER OF BYTES */
+				theItem.value = strSwap( theItem.byteBuffer.toString('ascii', 2 + thePointer, 2 + thePointer + strLength + (strLength % 2) ));
 				break;
 
 			case "TIMER":
@@ -1725,20 +1727,17 @@ function processSLCReadItem(theItem) {
 }
 
 function strSwap(str) {
-	var newStr = '', i;
+	var newStr = '', i = 0;
 	if (str && str.constructor == String) {
-		for (i=0;i<(str.length+(str.length % 2));i++) {
-			if (i % 2) { // if odd
-				newStr = newStr.concat(str.substr(i-1,1));
-
-			} else {
-				if (i < (str.length-1)) {
-					newStr = newStr.concat(str.substr(i+1,1));
-				} else {
-					newStr = newStr.concat(String.fromCharCode(0));
-				}
-
+		while ( i < str.length) {
+			if (i < str.length - 2) {
+				newStr = newStr.concat(str.substr( i + 1, 1), str.substr( i, 1));
+			}else{
+				/** THE LAST 2 CHARACTERS */
+				newStr = newStr.concat(str.substr( i + 1, 1 ));
+				if (str.substr( i, 1) != "\u0000") newStr = newStr.concat(str.substr( i, 1)); 
 			}
+			i = i + 2;
 		}
 		return newStr;
 	}
