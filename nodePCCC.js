@@ -1397,7 +1397,7 @@ NodePCCC.prototype.onClientDisconnect = function() {
 	self.tryingToConnectNow = false;
 }
 
-NodeS7.prototype.onClientClose = function(){
+NodePCCC.prototype.onClientClose = function(){
 	var self = this;
     // clean up the connection now the socket has closed
 	self.connectionCleanup();
