@@ -101,6 +101,8 @@ function NodePCCC(){
 	self.readPacketValid = false;
 	self.writeInQueue = false;
 	self.connectCBIssued = false;
+	self.dropConnectionCallback = null;
+	self.dropConnectionTimer = null;
 
 // EIP specific
 	self.sessionHandle = 0; // Define as zero for when we write packets prior to connection
@@ -133,12 +135,31 @@ NodePCCC.prototype.initiateConnection = function (cParam, callback) {
 	self.connectNow(self.connectionParams, false);
 }
 
-NodePCCC.prototype.dropConnection = function () {
+NodePCCC.prototype.dropConnection = function (callback) {
 	var self = this;
 	if (typeof(self.isoclient) !== 'undefined') {
+		// store the callback and request and end to the connection
+		self.dropConnectionCallback = callback;
 		self.isoclient.end();
+		// now wait for 'on close' event to trigger connection cleanup
+
+		// but also start a timer to destroy the connection in case we do not receive the close
+		self.dropConnectionTimer = setTimeout(function(){
+          if( self.dropConnectionCallback ) {
+              // destroy the socket connection
+              self.isoclient.destroy();
+              // clean up the connection now the socket has closed
+              self.connectionCleanup();
+              // initate the callback
+              self.dropConnectionCallback();
+              // prevent any possiblity of the callback being called twice
+              self.dropConnectionCallback = null;
+          }
+	  }, 2500);
+	} else {
+      // if client not active, then callback immediately
+      callback();
 	}		
-	self.connectionCleanup();  // TODO - check this.
 }
 
 NodePCCC.prototype.connectNow = function(cParam, suppressCallback) { // TODO - implement or remove suppressCallback
@@ -229,6 +250,12 @@ NodePCCC.prototype.onTCPConnect = function() {
 	self.isoclient.on('end',function() {
 		self.onClientDisconnect.apply(self, arguments);
 	});
+
+	// listen for close (caused by us sending an end)
+	self.isoclient.on('close', function(){
+		self.onClientClose.apply(self, arguments);
+	});
+
 }
 
 NodePCCC.prototype.onEIPConnectReply = function(data) {
@@ -1370,6 +1397,21 @@ NodePCCC.prototype.onClientDisconnect = function() {
 	self.tryingToConnectNow = false;
 }
 
+NodePCCC.prototype.onClientClose = function(){
+	var self = this;
+    // clean up the connection now the socket has closed
+	self.connectionCleanup();
+
+    // initiate the callback stored by dropConnection
+    if( self.dropConnectionCallback ) {
+        self.dropConnectionCallback();
+        // prevent any possiblity of the callback being called twice
+        self.dropConnectionCallback = null;
+        // and cancel the timeout
+        clearTimeout(self.dropConnectionTimer);
+    }
+}
+
 NodePCCC.prototype.connectionReset = function() {
 	var self = this;
 	self.isoConnectionState = 0;
@@ -1407,6 +1449,7 @@ NodePCCC.prototype.connectionCleanup = function() {
 		self.isoclient.removeAllListeners('error');
 		self.isoclient.removeAllListeners('connect');
 		self.isoclient.removeAllListeners('end');
+		self.isoclient.removeAllListeners('close');
 	}
 	clearTimeout(self.connectTimeout);
 	clearTimeout(self.PDUTimeout);
