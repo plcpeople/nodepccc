@@ -141,10 +141,10 @@ params should be an object with the following keys:
 `callback(err)` will be executed on success or failure.  err is either an error object, or undefined on successful connection.
 
 
-#### <a name="drop-connection"></a>nodepccc.dropConnection()
+#### <a name="drop-connection"></a>nodepccc.dropConnection(callback)
 Disconnects from a PLC.  
 
-This simply terminates the TCP connection.  It does NOT do an Ethernet/IP disconnect at this time.
+This simply terminates the TCP connection.  It does NOT do an Ethernet/IP disconnect at this time. The callback is called upon completion of the TCP close.
 
 
 #### <a name="set-translation-cb"></a>nodepccc.setTranslationCB(translator)
