@@ -114,6 +114,11 @@ NodePCCC.prototype.setTranslationCB = function(cb) {
 	}
 }
 
+NodePCCC.prototype.setPath = function(path) {
+	var self = this;
+	self.Connection_Path = new Buffer(path);
+}
+
 NodePCCC.prototype.initiateConnection = function (cParam, callback) {
 	var self = this;
 	if (cParam === undefined) { cParam = {port: 44818, host: '192.168.8.106'}; }
@@ -1061,9 +1066,9 @@ NodePCCC.prototype.onResponse = function(data) {
 
 	// The smallest read packet will pass a length check of 25.  For a 1-item write response with no data, length will be 22.  
 	if (data.length > (data.readInt16LE(2) + 24)) {
-		outputLog("An oversize packet was detected.  Excess length is " + (data.length - data.readInt16LE(2) - 24) + ".  ");
-		outputLog("Usually because two packets were sent at nearly the same time by the PLC.");
-		outputLog("We slice the buffer and schedule the second half for later processing.");
+		outputLog("An oversize packet was detected.  Excess length is " + (data.length - data.readInt16LE(2) - 24) + ".  ",1);
+		outputLog("Usually because two packets were sent at nearly the same time by the PLC.",1);
+		outputLog("We slice the buffer and schedule the second half for later processing.",1);
 //		setTimeout(onResponse, 0, data.slice(data.readInt16LE(2) + 24));  // This re-triggers this same function with the sliced-up buffer.
 		process.nextTick(function(){
 			self.onResponse(data.slice(data.readInt16LE(2) + 24))
@@ -1556,7 +1561,7 @@ function writePostProcess(theItem) {
 				// Note that we add the bit offset here for the rare case of an array starting at other than zero.  We either have to 
 				// drop support for this at the request level or support it here.  
 
-				if ((((arrayIndex + theItem.bitOffset + 1) % 8) == 0) || (arrayIndex == theItem.arrayLength - 1)){
+				if ((((arrayIndex + theItem.bitOffset + 1) % 16) == 0) || (arrayIndex == theItem.arrayLength - 1)){
 					thePointer += theItem.dtypelen;
 					}
 			} else {
@@ -1611,7 +1616,7 @@ function processSLCReadItem(theItem) {
 					theItem.value.push(theItem.byteBuffer.readUInt16LE(thePointer));
 					break;
 				case "X":
-					theItem.value.push(((theItem.byteBuffer.readUInt8(thePointer) >> (bitShiftAmount)) & 1) ? true : false);
+					theItem.value.push(((theItem.byteBuffer.readUInt16LE(thePointer) >> (bitShiftAmount)) & 1) ? true : false);
 					break;
 				case "B":
 				case "BYTE":
@@ -1635,7 +1640,7 @@ function processSLCReadItem(theItem) {
 					break;
 				case "NSTRING":
 					strLength = Math.min(theItem.byteBuffer.readUInt16LE(thePointer), 82);
-					theItem.value.push(strSwap(theItem.byteBuffer.toString('ascii',4+thePointer,4+thePointer+strLength),strLength));
+					theItem.value.push(theItem.byteBuffer.toString('ascii',4+thePointer,4+thePointer+strLength));
 					break;
 				default:
 					outputLog("Unknown data type in response - should never happen.  Should have been caught earlier.  " + theItem.datatype);
@@ -1647,13 +1652,13 @@ function processSLCReadItem(theItem) {
 				// Note that we add the bit offset here for the rare case of an array starting at other than zero.  We either have to 
 				// drop support for this at the request level or support it here.  
 				bitShiftAmount++;
-				if ((((arrayIndex + theItem.bitOffset + 1) % 8) == 0) || (arrayIndex == theItem.arrayLength - 1)){
-					thePointer += theItem.dtypelen;
+				if ((((arrayIndex + theItem.bitOffset + 1) % 16) == 0) || (arrayIndex == theItem.arrayLength - 1)){
+					thePointer += 2; // Note we increment by 2, not theItem.dtypelen, because we are parsing long arrays 16 at a time anyway
 					bitShiftAmount = 0;
-					}
+				}
 			} else {
 				// Add to the pointer every time.  
-				thePointer += theItem.dtypelen; 	
+				thePointer += theItem.dtypelen;
 			}
 		}
 	} else {		
@@ -1706,7 +1711,7 @@ function processSLCReadItem(theItem) {
 				break;
 			case "NSTRING":
 				strLength = Math.min(theItem.byteBuffer.readUInt16LE(thePointer), 82);
-				theItem.value = strSwap( theItem.byteBuffer.toString('ascii', 4 + thePointer, 4 + thePointer + strLength + (strLength % 2) ), strLength);
+				theItem.value = theItem.byteBuffer.toString('ascii', 4 + thePointer, 4 + thePointer + strLength);
 				break;
 			case "TIMER":
 			case "COUNTER":
@@ -1778,8 +1783,8 @@ function bufferizePCCCItem(theItem) {
 					break;
 				case "X":
 					theByte = theByte | (((theItem.writeValue[arrayIndex] === true) ? 1 : 0) << bitShiftAmount);		
-					// Maybe not so efficient to do this every time when we only need to do it every 8.  Need to be careful with optimizations here for odd requests.  
-					theItem.writeBuffer.writeUInt8(theByte, thePointer);
+					// Maybe not so efficient to do this every time when we only need to do it every 16.  Need to be careful with optimizations here for odd requests.  
+					theItem.writeBuffer.writeUInt16LE(theByte, thePointer);
 					bitShiftAmount++;
 					break;
 				case "B":
@@ -1804,7 +1809,16 @@ function bufferizePCCCItem(theItem) {
 					strLength = Math.min(theItem.writeValue[arrayIndex].length,82);
 					theItem.writeBuffer.writeUInt8(strLength,thePointer);
 					theItem.writeBuffer.writeUInt8(0,thePointer+1);
-					theItem.writeBuffer.write(strSwap(theItem.writeValue[arrayIndex]),thePointer+2,(strLength % 2) ? strLength + 1 : strLength,'ascii');
+					if (strLength % 2) { // odd
+						theItem.writeBuffer.write(strSwap(theItem.writeValue[arrayIndex] + " ",strLength + 1),thePointer+2,strLength + 1,'ascii');
+					} else {
+						theItem.writeBuffer.write(strSwap(theItem.writeValue[arrayIndex],strLength),thePointer+2,strLength,'ascii');
+					}
+					break;
+				case "NSTRING":
+					strLength = Math.min(theItem.writeValue[arrayIndex].length,82);
+					theItem.writeBuffer.writeUInt32LE(strLength,thePointer);
+					theItem.writeBuffer.write(theItem.writeValue[arrayIndex],thePointer+4,strLength,'ascii');
 					break;
 				default:
 					outputLog("Unknown data type when preparing array write packet - should never happen.  Should have been caught earlier.  " + theItem.datatype);
@@ -1815,10 +1829,11 @@ function bufferizePCCCItem(theItem) {
 				// Note that we add the bit offset here for the rare case of an array starting at other than zero.  We either have to 
 				// drop support for this at the request level or support it here.  
 
-				if ((((arrayIndex + theItem.bitOffset + 1) % 8) == 0) || (arrayIndex == theItem.arrayLength - 1)){
-					thePointer += theItem.dtypelen;
+				if ((((arrayIndex + theItem.bitOffset + 1) % 16) == 0) || (arrayIndex == theItem.arrayLength - 1)){
+					thePointer += 2; // // Note we increment by 2, not theItem.dtypelen, because we are parsing long arrays 16 at a time anyway
 					bitShiftAmount = 0;
-					}
+					theByte = 0;
+				}
 			} else {
 				// Add to the pointer every time.  
 				thePointer += theItem.dtypelen;
@@ -1844,7 +1859,7 @@ function bufferizePCCCItem(theItem) {
 				theItem.writeBuffer.writeUInt16LE(theItem.writeValue, thePointer);
 				break;
 			case "X":
-				theItem.writeBuffer.writeUInt8(((theItem.writeValue) ? 1 : 0), thePointer);  // checked ===true but this caused problems if you write 1
+				theItem.writeBuffer.writeUInt16LE(((theItem.writeValue) ? 1 : 0), thePointer);  // checked ===true but this caused problems if you write 1
 				outputLog("Datatype is X writing " + theItem.writeValue + " tpi " + theItem.writeBuffer[0],1);
 				
 // not here				theItem.writeBuffer[1] = 1; // Set transport code to "BIT" to write a single bit. 
@@ -1869,7 +1884,16 @@ function bufferizePCCCItem(theItem) {
 				strLength = Math.min(theItem.writeValue.length,82);
 				theItem.writeBuffer.writeUInt8(strLength,thePointer);
 				theItem.writeBuffer.writeUInt8(0,thePointer+1);
-				theItem.writeBuffer.write(strSwap(theItem.writeValue),thePointer+2,(strLength % 2) ? strLength + 1 : strLength,'ascii');
+				if (strLength % 2) { // odd
+					theItem.writeBuffer.write(strSwap(theItem.writeValue + " ",strLength + 1),thePointer+2,strLength + 1,'ascii');
+				} else {
+					theItem.writeBuffer.write(strSwap(theItem.writeValue,strLength),thePointer+2,strLength,'ascii');
+				}
+				break;
+			case "NSTRING":
+				strLength = Math.min(theItem.writeValue.length,82);
+				theItem.writeBuffer.writeUInt32LE(strLength,thePointer);
+				theItem.writeBuffer.write(theItem.writeValue,thePointer+4,strLength,'ascii');
 				break;
 			default:
 				outputLog("Unknown data type in write prepare - should never happen.  Should have been caught earlier.  " + theItem.datatype);
@@ -2272,7 +2296,7 @@ function stringToSLCAddr(addr, useraddr) {
 	case "NST": // N as string - special type to read strings moved into an integer array to support CompactLogix read-only.
 		theItem.addrtype = prefix;
 		theItem.datatype = "NSTRING";
-		theItem.multidtypelen = 42;
+		theItem.multidtypelen = 44;
 		break;
 	case "R":
 		theItem.addrtype = prefix;
@@ -2361,7 +2385,7 @@ function stringToSLCAddr(addr, useraddr) {
 		break;
 	case "NST": // N as string - special type to read strings moved into an integer array to support CompactLogix read-only.
 		theItem.areaPCCCCode = 0x89;
-		theItem.dtypelen = 42;			// 42 words is 84 bytes including the length byte
+		theItem.dtypelen = 88;			// 42 words is 84 bytes including the length byte
 		break;
 	case "A":
 		theItem.areaPCCCCode = 0x8e;

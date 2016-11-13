@@ -2,6 +2,17 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## [0.1.5] - 2016-11-13
+### Fixed
+- Bug fix for reading/writing bit arrays (thanks to Jotan)
+- Bug fix for arrays of bits in long integers
+- Improvements and documentation for NSTRING data type to read strings from Control/CompactLogix
+- DropConnection improvements thanks to dom-white
+- Fixed a bug writing odd length strings
+
+### Added
+- Experimental NString datatype support to allow reading strings from Control/CompactLogix that does not support ST files
+
 ## [0.1.4] - 2016-01-13
 ### Fixed
 - Odd-length string bug fix (thanks to Julien Ledun).

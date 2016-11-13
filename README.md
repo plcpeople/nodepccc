@@ -87,6 +87,8 @@ Example usage:
 			return 'N7:1,2';			// A couple of integers in an array  	
 		case 'TEST8':
 			return 'O:5/1';				// Direct output  	
+		case 'TEST9':
+			return 'ST18:0';
 		default:
 			return undefined;
 		}
@@ -165,8 +167,12 @@ Examples:
 - T4:0,20 - array of timers - will return an array of objects representing 20 timers - READ ONLY
 - R6:0.LEN - control length - read/write
 - R6:0 - control structure - will return a JS object - READ ONLY
+- ST18:0,2 - Array of strings
+- NST34:0 - String that has been copied with the COP instruction to an integer data type in a Control/CompactLogix PLC
 
 Note that some values are not supported in an array - timer presets and accumulators are an example, but entire timers are fine for READ ONLY.
+
+Note that strings are supported, but in Control/CompactLogix you must first COP the string to an integer that is mapped to a PLC5/SLC file.  You can read and write from this and COP it back to a string as needed.
 
 In the example above, an object is declared and the `translator` references that object.  It could just as reference a file or database.  In any case, it allows cleaner Javascript code to be written that refers to a name instead of an absolute address.  
 
