@@ -1405,7 +1405,8 @@ NodePCCC.prototype.onClientDisconnect = function() {
 NodePCCC.prototype.onClientClose = function(){
 	var self = this;
     // clean up the connection now the socket has closed
-	self.connectionCleanup();
+//	self.connectionCleanup();
+	self.connectionReset();  // We do a reset instead of a close now, as if close is somehow initiated at the other end we want to allow pending read/writes to timeout.
 
     // initiate the callback stored by dropConnection
     if( self.dropConnectionCallback ) {

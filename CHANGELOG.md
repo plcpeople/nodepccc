@@ -2,6 +2,11 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## [0.1.6] - 2017-02-27
+### Fixed
+- Fixed incorrect information in README section that talks about path/routing
+- Fixed the possibility of not returning from readAllItems if PLC initiates a disconnect
+
 ## [0.1.5] - 2016-11-13
 ### Fixed
 - Bug fix for reading/writing bit arrays (thanks to Jotan)
