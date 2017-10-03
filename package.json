@@ -23,8 +23,5 @@
   },
   "main": "nodePCCC.js",
   "license": "MIT",
-  "dependencies": {
-    "underscore": "1.4.x"
-  },
   "engine": "node 0.10.x"
 }
