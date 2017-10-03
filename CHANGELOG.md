@@ -2,6 +2,10 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## _Next_
+### Added
+ - NodePCCC accepts an object with `debug` and `silent` options for controlling verbosity
+
 ## [0.1.6] - 2017-02-27
 ### Fixed
 - Fixed incorrect information in README section that talks about path/routing

@@ -35,11 +35,17 @@ var net = require("net");
 var _ = require("underscore");
 var util = require("util");
 var effectiveDebugLevel = 0; // intentionally global, shared between connections
+var silentMode = false;
 
 module.exports = NodePCCC;
 
-function NodePCCC(){
+function NodePCCC(opts){
 	var self = this;
+
+	opts = opts || {};
+	silentMode = opts.silent || false;
+	effectiveDebugLevel = opts.debug ? 99 : 0;
+
 	self.connectReq   = new Buffer([0x65,0x00,0x04,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f,0x0a,0x0b,0x00,0x00,0x00,0x00,0x01,0x00,0x00,0x00]);
 							
 	// This header is used to assemble a read packet.
@@ -1464,6 +1470,8 @@ NodePCCC.prototype.connectionCleanup = function() {
 }
 
 function outputLog(txt, debugLevel, id) {
+	if(silentMode) return;
+
 	var idtext;
 	if (typeof(id) === 'undefined') {
 		idtext = '';
