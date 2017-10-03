@@ -149,12 +149,10 @@ NodePCCC.prototype.dropConnection = function (callback) {
 		// now wait for 'on close' event to trigger connection cleanup
 
 		// but also start a timer to destroy the connection in case we do not receive the close
-		self.dropConnectionTimer = setTimeout(function(){
+		self.dropConnectionTimer = setTimeout(function () {
+		  // clean up the connection now the socket has closed
+		  self.connectionCleanup();
           if( self.dropConnectionCallback ) {
-              // destroy the socket connection
-              self.isoclient.destroy();
-              // clean up the connection now the socket has closed
-              self.connectionCleanup();
               // initate the callback
               self.dropConnectionCallback();
               // prevent any possiblity of the callback being called twice
@@ -1435,6 +1433,7 @@ NodePCCC.prototype.resetNow = function() {
 	var self = this;
 	self.isoConnectionState = 0;
 	self.isoclient.end();
+	self.isoclient.destroy();
 	outputLog('ResetNOW is happening');
 	self.resetPending = false;
 	// In some cases, we can have a timeout scheduled for a reset, but we don't want to call it again in that case.
@@ -1451,6 +1450,7 @@ NodePCCC.prototype.connectionCleanup = function() {
 	self.isoConnectionState = 0;
 	outputLog('Connection cleanup is happening');	
 	if (typeof(self.isoclient) !== "undefined") {
+		self.isoclient.destroy();
 		self.isoclient.removeAllListeners('data');
 		self.isoclient.removeAllListeners('error');
 		self.isoclient.removeAllListeners('connect');
