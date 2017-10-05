@@ -2,7 +2,10 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
-## _Next_
+## [0.1.7] - 2017-10-05
+### Fixed
+- #15: Fixed node throwing with ECONNRESET because socket was not properly cleaned up
+
 ### Added
  - NodePCCC accepts an object with `debug` and `silent` options for controlling verbosity
 
