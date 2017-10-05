@@ -34,11 +34,17 @@
 var net = require("net");
 var util = require("util");
 var effectiveDebugLevel = 0; // intentionally global, shared between connections
+var silentMode = false;
 
 module.exports = NodePCCC;
 
-function NodePCCC(){
+function NodePCCC(opts){
 	var self = this;
+
+	opts = opts || {};
+	silentMode = opts.silent || false;
+	effectiveDebugLevel = opts.debug ? 99 : 0;
+
 	self.connectReq   = new Buffer([0x65,0x00,0x04,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f,0x0a,0x0b,0x00,0x00,0x00,0x00,0x01,0x00,0x00,0x00]);
 							
 	// This header is used to assemble a read packet.
@@ -148,12 +154,10 @@ NodePCCC.prototype.dropConnection = function (callback) {
 		// now wait for 'on close' event to trigger connection cleanup
 
 		// but also start a timer to destroy the connection in case we do not receive the close
-		self.dropConnectionTimer = setTimeout(function(){
+		self.dropConnectionTimer = setTimeout(function () {
+		  // clean up the connection now the socket has closed
+		  self.connectionCleanup();
           if( self.dropConnectionCallback ) {
-              // destroy the socket connection
-              self.isoclient.destroy();
-              // clean up the connection now the socket has closed
-              self.connectionCleanup();
               // initate the callback
               self.dropConnectionCallback();
               // prevent any possiblity of the callback being called twice
@@ -1434,6 +1438,7 @@ NodePCCC.prototype.resetNow = function() {
 	var self = this;
 	self.isoConnectionState = 0;
 	self.isoclient.end();
+	self.isoclient.destroy();
 	outputLog('ResetNOW is happening');
 	self.resetPending = false;
 	// In some cases, we can have a timeout scheduled for a reset, but we don't want to call it again in that case.
@@ -1450,6 +1455,7 @@ NodePCCC.prototype.connectionCleanup = function() {
 	self.isoConnectionState = 0;
 	outputLog('Connection cleanup is happening');	
 	if (typeof(self.isoclient) !== "undefined") {
+		self.isoclient.destroy();
 		self.isoclient.removeAllListeners('data');
 		self.isoclient.removeAllListeners('error');
 		self.isoclient.removeAllListeners('connect');
@@ -1463,6 +1469,8 @@ NodePCCC.prototype.connectionCleanup = function() {
 }
 
 function outputLog(txt, debugLevel, id) {
+	if(silentMode) return;
+
 	var idtext;
 	if (typeof(id) === 'undefined') {
 		idtext = '';
