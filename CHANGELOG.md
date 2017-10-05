@@ -8,6 +8,7 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
  - NodePCCC accepts an object with `debug` and `silent` options for controlling verbosity
+ - Removed dependency to underscore
 
 ## [0.1.6] - 2017-02-27
 ### Fixed
