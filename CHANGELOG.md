@@ -2,6 +2,10 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## [0.1.8] - 2018-05-31
+### Fixed
+- #24: Fixed node throwing error on failed write due to loss of communication with PLC.
+
 ## [0.1.7] - 2017-10-05
 ### Fixed
 - #15: Fixed node throwing with ECONNRESET because socket was not properly cleaned up

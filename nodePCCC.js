@@ -1568,6 +1568,14 @@ function processSLCWriteItem(theData, theItem, thePointer) {
 	
 //	var remainingLength = theData.length - thePointer;  // Say if length is 39 and pointer is 35 we can access 35,36,37,38 = 4 bytes.  
 //	var prePointer = thePointer;
+
+	if (typeof(theData) === "undefined") { // Expected if communication failure
+		theItem.valid = false;
+		theItem.errCode = 'No communication to PLC.';
+		outputLog(theItem.errCode);
+		return 0;
+	}
+
 	
 	if (theData.length < 1 || theData.length < (theData[0] + 4) || theData[theData[0]] !== 0x4f) {  // Should be at least 11 bytes with 7 byte header
 		theItem.valid = false;
