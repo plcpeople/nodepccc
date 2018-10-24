@@ -2002,7 +2002,7 @@ function SLCAddrToBufferA2(addrinfo, isWriting) {
 		PCCCCommand[4+extraOffset] = addrinfo.offset;
 	} else {
 		PCCCCommand[4+extraOffset] = 0xff;
-		PCCCCommand.writeUInt16LE(addrinfo.fileNumber, 5+extraOffset);
+		PCCCCommand.writeUInt16LE(addrinfo.offset, 5+extraOffset);
 		extraOffset = extraOffset + 2;
 	}
 
