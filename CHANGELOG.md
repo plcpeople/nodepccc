@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## [0.1.10] - 2018-11-24
+### Fixed
+- #26: Fixed issue with not indicating bad quality on write
+- Fixed issue writing any values with an offset within the file > 254.
+- Fixed issues reconnecting when writing
+- Better indication when a write is requested and it will be lost
+- Better support of NSTRING arrays
+- Better support of long arrays of all types
+
 ## [0.1.9] - 2018-10-24
 ### Fixed
 - #25: Fixed issue reading any values with an offset within the file > 254.

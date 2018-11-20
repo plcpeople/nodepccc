@@ -217,8 +217,10 @@ NodePCCC.prototype.packetTimeout = function(packetType, packetSeqNum) {
 		self.connectionReset();
 		outputLog("Scheduling a reconnect from packetTimeout, connect type",0,self.connectionID);
 		setTimeout(function(){
-			outputLog("The scheduled reconnect from packetTimeout, connect type, is happening now",0,self.connectionID);
-			self.connectNow.apply(self,arguments);
+			outputLog("The scheduled reconnect from packetTimeout, connect type, is happening now", 0, self.connectionID);
+			if (self.isoConnectionState === 0) {
+				self.connectNow.apply(self, arguments);
+			}
 		}, 2000, self.connectionParams);
 		return undefined;
 	}
@@ -324,9 +326,9 @@ NodePCCC.prototype.writeItems = function(arg, value, cb) {
 	var i;
 	outputLog("Preparing to WRITE " + arg,0,self.connectionID);
 
-	if (self.isWriting()) {
+	if (self.isWriting() || self.writeInQueue) {  // Reading is fine, we'll go in the queue.
 		outputLog("You must wait until all previous writes have finished before scheduling another. ",0,self.connectionID); 
-		return; 
+		return 1; // Watch for this in your code - 1 means it hasn't actually entered into the queue.
 	}
 	
 	if (typeof cb === "function") {
@@ -362,10 +364,17 @@ NodePCCC.prototype.writeItems = function(arg, value, cb) {
 	}
 	self.prepareWritePacket();
 	if (!self.isReading()) { 
-		self.sendWritePacket(); 
+		outputLog("SendWritePacket called from WriteItems",1,self.connectionID);
+		self.sendWritePacket();
 	} else {
+		if (self.writeInQueue) {
+			outputLog("Write was already in queue - should be prevented above",1,self.connectionID);
+		}
 		self.writeInQueue = true;
+		outputlog("Adding write to queue");
 	}
+    }
+    return 0;
 }
 
 
@@ -486,7 +495,7 @@ NodePCCC.prototype.readAllItems = function(arg) {
 	// ideally...  incrementSequenceNumbers();
 	
 	outputLog("Calling SRP from RAI",1,self.connectionID);
-	self.sendReadPacket(); // Note this sends the first few read packets depending on parallel connection restrictions.   
+	self.sendReadPacket(); // Note this sends the first few read packets depending on parallel connection restrictions.
 }
 
 NodePCCC.prototype.isWaiting = function() {
@@ -566,8 +575,11 @@ NodePCCC.prototype.prepareWritePacket = function() {
 	var thisBlock = 0;
 	itemList[0].block = thisBlock;
 	var maxByteRequest = 4*Math.floor((self.maxPDU - 18 - 12)/4);  // Absolutely must not break a real array into two requests.  Maybe we can extend by two bytes when not DINT/REAL/INT.  
+	for (i = 0; i < itemList.length; i++) {
+		maxByteRequest = maxByteRequest - (maxByteRequest % itemList[i].multidtypelen);
+	}
 //	outputLog("Max Write Length is " + maxByteRequest);
-	
+
 	// Just push the items into blocks and figure out the write buffers
 	for (i=0;i<itemList.length;i++) {
 		self.globalWriteBlockList[i] = itemList[i]; // Remember - by reference.  
@@ -605,6 +617,7 @@ NodePCCC.prototype.prepareWritePacket = function() {
 			requestList[thisRequest].byteLength = Math.min(maxByteRequest,remainingLength);
 			requestList[thisRequest].byteLengthWithFill = requestList[thisRequest].byteLength;
 			if (requestList[thisRequest].byteLengthWithFill % 2) { requestList[thisRequest].byteLengthWithFill += 1; };
+			requestList[thisRequest].writeByteLength = requestList[thisRequest].byteLengthWithFill;
 
 			// max
 //			outputLog("LO " + lengthOffset + " rblf " + requestList[thisRequest].byteLengthWithFill + " val " + globalWriteBlockList[i].writeBuffer[0]);
@@ -618,7 +631,7 @@ NodePCCC.prototype.prepareWritePacket = function() {
 				requestList[thisRequest].arrayLength = requestList[thisRequest].byteLength;//globalReadBlockList[thisBlock].byteLength;		(This line shouldn't be needed anymore - shouldn't matter)
 			}
 			remainingLength -= maxByteRequest;
-			startElement += maxByteRequest/requestList[thisRequest].multidtypelen;			
+			startElement += maxByteRequest*requestList[thisRequest].plcnpratio/requestList[thisRequest].multidtypelen;
 			thisRequest++;
 		}		
 	}
@@ -700,10 +713,14 @@ NodePCCC.prototype.prepareReadPacket = function() {
 	var thisBlock = 0;
 	itemList[0].block = thisBlock;
 	var maxByteRequest = 4*Math.floor((self.maxPDU - 18)/4);  // Absolutely must not break a real array into two requests.  Maybe we can extend by two bytes when not DINT/REAL/INT.  
-	
+
+	for (i = 0; i < itemList.length; i++) {
+		maxByteRequest = maxByteRequest - (maxByteRequest % itemList[i].multidtypelen);
+	}
+
 	// Optimize the items into blocks
 	for (i=1;i<itemList.length;i++) {
-		// Skip T, C, P types 
+		// Skip T, C, P types
 		if ((itemList[i].areaPCCCCode !== self.globalReadBlockList[thisBlock].areaPCCCCode) ||   	// Can't optimize between areas
 				(itemList[i].fileNumber !== self.globalReadBlockList[thisBlock].fileNumber) ||			// Can't optimize across DBs
 				(!self.isOptimizableArea(itemList[i].areaPCCCCode)) || 					// May as well try to optimize everything.  
@@ -784,7 +801,9 @@ NodePCCC.prototype.prepareReadPacket = function() {
 				requestList[thisRequest].arrayLength = requestList[thisRequest].byteLength;//globalReadBlockList[thisBlock].byteLength;		
 			}
 			remainingLength -= maxByteRequest;
-			startElement += maxByteRequest/requestList[thisRequest].multidtypelen;
+			startElement += maxByteRequest * requestList[thisRequest].plcnpratio / requestList[thisRequest].multidtypelen;
+			// For types like "R", each structure is 6 bytes, and if you request 198 bytes, you need to increment your count by 198/6 = 33 because multidtypelen is 6.
+			// For NSTRING it's different, we need to increment by 44 integers per unit, so 176/mdtl has to be 88.   This is because an array increment of 1 increments 44 integers.
 			thisRequest++;
 		}		
 	}
@@ -921,7 +940,7 @@ NodePCCC.prototype.sendReadPacket = function() {
 //			outputLog('Somehow got into read block without proper isoConnectionState of 4.  Disconnect.');
 //			connectionReset();
 //			setTimeout(connectNow, 2000, connectionParams);
-// Note we aren't incrementing maxParallel so we are actually going to time out on all our packets all at once.    
+// Note we aren't incrementing maxParallel so we are actually going to time out on all our packets all at once, this is intentional.
 			self.readPacketArray[i].sent = true;
 			self.readPacketArray[i].rcvd = false;
 			self.readPacketArray[i].timeoutError = true;	
@@ -940,6 +959,9 @@ NodePCCC.prototype.sendReadPacket = function() {
 		}
 	}
 
+/* NOTE: We no longer do this here.
+Reconnects are done on the response that we will get from the above packets.
+Reason: We could have some packets waiting for timeout from the PLC, and others coming back instantly.
 	if (flagReconnect) {
 //		console.log("Asking for callback next tick and my ID is " + self.connectionID);
 		setTimeout(function() {
@@ -947,7 +969,7 @@ NodePCCC.prototype.sendReadPacket = function() {
 			outputLog("The scheduled reconnect from sendReadPacket is happening now",1,self.connectionID);	
 			self.connectNow(self.connectionParams);  // We used to do this NOW - not NextTick() as we need to mark isoConnectionState as 1 right now.  Otherwise we queue up LOTS of connects and crash.
 		}, 0);
-	}
+	}*/
 	
 }
 
@@ -957,7 +979,7 @@ NodePCCC.prototype.sendWritePacket = function() {
 	dataBuffer = new Buffer(8192);
 
 	self.writeInQueue = false;
-	
+
 	for (i=0;i<self.writePacketArray.length;i++) {
 		if (self.writePacketArray[i].sent) { continue; }
 		if (self.parallelJobsNow >= self.maxParallel) { continue; }
@@ -1036,29 +1058,31 @@ NodePCCC.prototype.sendWritePacket = function() {
 			self.writePacketArray[i].sent = true;
 			self.writePacketArray[i].rcvd = false;
 			self.writePacketArray[i].timeoutError = true;
-
+			// self.parallelJobsNow += 1; // We don't want to increment this here, we want all packets to time out at once.
 			// Without the scopePlaceholder, this doesn't work.   writePacketArray[i] becomes undefined.
 			// The reason is that the value i is part of a closure and when seen "nextTick" has the same value 
 			// it would have just after the FOR loop is done.  
 			// (The FOR statement will increment it to beyond the array, then exit after the condition fails)
 			// scopePlaceholder works as the array is de-referenced NOW, not "nextTick".  
-			var scopePlaceholder = self.writePacketArray[i].seqNum;
-			process.nextTick(function() {
-				self.packetTimeout("write", scopePlaceholder);
-			});
+			self.writePacketArray[i].timeout = setTimeout(function () {
+				self.packetTimeout.apply(self, arguments);
+			}, 0, "write", self.writePacketArray[i].seqNum);
 			if (self.isoConnectionState == 0) {
 				flagReconnect = true;
 			}
 		}
 	}
-	if (flagReconnect) {
+/* NOTE: We no longer do this here.
+Reconnects are done on the response that we will get from the above packets.
+Reason: We could have some packets waiting for timeout from the PLC, and others coming back instantly.	
+if (flagReconnect) {
 //		console.log("Asking for callback next tick and my ID is " + self.connectionID);
 		setTimeout(function() {
 //			console.log("Next tick is here and my ID is " + self.connectionID);
 			outputLog("The scheduled reconnect from sendWritePacket is happening now",1,self.connectionID);	
 			self.connectNow(self.connectionParams);  // We used to do this NOW - not NextTick() as we need to mark isoConnectionState as 1 right now.  Otherwise we queue up LOTS of connects and crash.
 		}, 0);
-	}
+	}*/
 }
 
 NodePCCC.prototype.isOptimizableArea = function(area) {
@@ -1254,7 +1278,9 @@ NodePCCC.prototype.findWriteIndexOfSeqNum = function(seqNum) {
 
 NodePCCC.prototype.writeResponse = function(data, foundSeqNum) {
 	var self = this;
-	var dataPointer = 21,i,anyBadQualities;
+	var dataPointer = 21, i, anyBadQualities;
+
+	outputlog("We're in write response seq num " + foundSeqNum + " of " + self.writePacketArray.length,1,self.connectionID);
 
 	if (!self.writePacketArray[foundSeqNum].sent) {
 		outputLog('WARNING: Received a write packet that was not marked as sent',0,self.connectionID);
@@ -1287,9 +1313,13 @@ NodePCCC.prototype.writeResponse = function(data, foundSeqNum) {
 	
 	if (!self.writePacketArray.every(doneSending)) {
 //			readPacketInterval = setTimeout(prepareReadPacket, 3000);
+		outputLog("Not done sending - sending more packets from writeResponse",1,self.connectionID);
 		self.sendWritePacket();
-		outputLog("Sending again",1);
+// Uncomment for debug		for (var blah = 0; blah < self.writePacketArray.length; blah++) {
+// Uncomment for debug			console.log("i is " + blah + " and rcvd is " + self.writePacketArray[blah].rcvd + " and sent is " + self.writePacketArray[blah].sent);
+// Uncomment for debug		}
 	} else {
+		outputLog("Sending more packets from writeResponse",1,self.connectionID);
 		for (i=0;i<self.writePacketArray.length;i++) {
 			self.writePacketArray[i].sent = false;
 			self.writePacketArray[i].rcvd = false;				
@@ -1301,11 +1331,23 @@ NodePCCC.prototype.writeResponse = function(data, foundSeqNum) {
 			// Post-process the write code and apply the quality.  
 			// Loop through the global block list...
 			writePostProcess(self.globalWriteBlockList[i]);
-			outputLog(self.globalWriteBlockList[i].addr + ' write completed with quality ' + self.globalWriteBlockList[i].writeQuality,0);
-			if (!isQualityOK(self.globalWriteBlockList[i].writeQuality)) { anyBadQualities = true; }
+			for (var k = 0; k < self.globalWriteBlockList[i].itemReference.length; k++) {
+				outputLog(self.globalWriteBlockList[i].itemReference[k].addr + ' write completed with quality ' + self.globalWriteBlockList[i].itemReference[k].writeQuality, 0);
+				if (!isQualityOK(self.globalWriteBlockList[i].itemReference[k].writeQuality)) {
+					anyBadQualities = true;
+				}
+			}
+//			outputLog(self.globalWriteBlockList[i].addr + ' write completed with quality ' + self.globalWriteBlockList[i].writeQuality,0);
+//			if (!isQualityOK(self.globalWriteBlockList[i].writeQuality)) { anyBadQualities = true; }
 		}
-		if (typeof(self.writeDoneCallback === 'function')) {
+		if (typeof(self.writeDoneCallback) === 'function') {
 			self.writeDoneCallback(anyBadQualities);
+		}
+		if (self.resetPending) {
+			self.resetNow();
+		}
+		if (self.isoConnectionState === 0) {
+			self.connectNow(self.connectionParams, false);
 		}
 	}
 }
@@ -1385,13 +1427,21 @@ NodePCCC.prototype.readResponse = function(data, foundSeqNum) {
 		// Inform our user that we are done and that the values are ready for pickup.
 
 		outputLog("We are calling back our readDoneCallback.",1,self.connectionID);
-		if (typeof(self.readDoneCallback === 'function')) {
+		if (typeof(self.readDoneCallback) === 'function') {
 			self.readDoneCallback(anyBadQualities, dataObject, self.isoConnectionState !== 4);
 		}
-		if (self.resetPending) {
-			self.resetNow();
+		if (!self.writeInQueue) {
+			if (self.resetPending) {
+				self.resetNow();
+			}
+			if (self.isoConnectionState === 0) {
+				self.connectNow(self.connectionParams, false);
+			}
 		}
-		if (!self.isReading() && self.writeInQueue) { self.sendWritePacket(); }
+		if (!self.isReading() && self.writeInQueue) {
+			outputlog("SendWritePacket called because write was queued.");
+			self.sendWritePacket();
+		}
 	} else {
 		outputLog("Calling SRP from RR",1,self.connectionID);
 		self.sendReadPacket();
@@ -1426,11 +1476,11 @@ NodePCCC.prototype.connectionReset = function() {
 	self.isoConnectionState = 0;
 	self.resetPending = true;
 	outputLog('ConnectionReset is happening');
-	if (!self.isReading() && typeof(self.resetTimeout) === 'undefined') { // For now - ignore writes.  && !isWriting()) {	
+	if (!self.isReading() && !self.isWriting() && !self.writeInQueue && typeof(self.resetTimeout) === 'undefined') {
 		self.resetTimeout = setTimeout(function() {
 			self.resetNow.apply(self, arguments);
-		} ,1500);
-	} 
+		} ,4500);  // Increased to 4500 to try to prevent issues with packet timeouts.
+	}
 	// For now we wait until read() is called again to re-connect.  
 }
 
@@ -1573,6 +1623,7 @@ function processSLCWriteItem(theData, theItem, thePointer) {
 		theItem.valid = false;
 		theItem.errCode = 'No communication to PLC.';
 		outputLog(theItem.errCode);
+		theItem.writeQualityBuffer.fill(0xFF);
 		return 0;
 	}
 
@@ -1581,6 +1632,7 @@ function processSLCWriteItem(theData, theItem, thePointer) {
 		theItem.valid = false;
 		theItem.errCode = 'Malformed Reply PCCC Packet - Less Than 1 Byte or Malformed Header.  ' + theData;
 		outputLog(theItem.errCode);
+		theItem.writeQualityBuffer.fill(0xFF);
 		return 0;   			// Hard to increment the pointer so we call it a malformed packet and we're done.      
 	}
 	
@@ -2064,7 +2116,7 @@ function SLCAddrToBufferAA(addrinfo) {
 		PCCCCommand[4+extraOffset] = addrinfo.offset;
 	} else {
 		PCCCCommand[4+extraOffset] = 0xff;
-		PCCCCommand.writeUInt16LE(addrinfo.fileNumber, 5+extraOffset);
+		PCCCCommand.writeUInt16LE(addrinfo.offset, 5+extraOffset);
 		extraOffset = extraOffset + 2;
 	}
 
@@ -2314,7 +2366,9 @@ function stringToSLCAddr(addr, useraddr) {
 			return undefined;
 		}
 	}
-		
+
+	theItem.plcnpratio = 1;
+
 	// Get the data type from the second part.  
 	prefix = splitString[0].replace(/[0-9]/gi, '');
 	switch (prefix) {
@@ -2355,7 +2409,8 @@ function stringToSLCAddr(addr, useraddr) {
 	case "NST": // N as string - special type to read strings moved into an integer array to support CompactLogix read-only.
 		theItem.addrtype = prefix;
 		theItem.datatype = "NSTRING";
-		theItem.multidtypelen = 44;
+		theItem.multidtypelen = 88;  // This was 44 until 0.1.20.
+		theItem.plcnpratio = 44;
 		break;
 	case "R":
 		theItem.addrtype = prefix;
@@ -2541,6 +2596,7 @@ function PLCItem() { // Object
 	this.dtypelen = undefined;
 	this.writeDtypelen = undefined;
 	this.multidtypelen = undefined; // multi-datatype length.  Different than dtypelen when requesting a timer preset, for example, which has width two but dtypelen of 2.
+	this.plcnpratio = 1;  // number of "PLC increments" per "array increment", mainly for NSTRING where it's 44 integers per string.
 	this.areaS7Code = undefined;
 	this.byteLength = undefined;
 	this.writeByteLength = undefined;
@@ -2602,6 +2658,8 @@ function PLCItem() { // Object
 			return false;
 		case "C":
 		case "CHAR":
+		case "STRING":
+		case "NSTRING":
 			// Convert to string.  
 			return "";
 		default:

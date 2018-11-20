@@ -191,6 +191,8 @@ Writes `items` to the PLC using the corresponding `values`.
 
 `items` can be a string or an array of strings.  If `items` is a single string, `values` should then be a single item (or an array if `items` is an array item).  If `items` is an array of strings, `values` must be an array.
 
+You should monitor the return value - if it is non-zero, the write will not be processed as there is already one it progress, and the callback will not be called.
+
 #### <a name="read-all-items"></a>nodepccc.readAllItems(callback)
 Reads the internal polling list and calls `callback` when done.  
 
