@@ -2409,7 +2409,7 @@ function stringToSLCAddr(addr, useraddr) {
 	case "NST": // N as string - special type to read strings moved into an integer array to support CompactLogix read-only.
 		theItem.addrtype = prefix;
 		theItem.datatype = "NSTRING";
-		theItem.multidtypelen = 88;  // This was 44 until 0.1.20.
+		theItem.multidtypelen = 88;  // This was 44 until 0.1.10.
 		theItem.plcnpratio = 44;
 		break;
 	case "R":
