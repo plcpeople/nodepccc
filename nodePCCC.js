@@ -371,10 +371,9 @@ NodePCCC.prototype.writeItems = function(arg, value, cb) {
 			outputLog("Write was already in queue - should be prevented above",1,self.connectionID);
 		}
 		self.writeInQueue = true;
-		outputlog("Adding write to queue");
+		outputLog("Adding write to queue");
 	}
-    }
-    return 0;
+	return 0;
 }
 
 
@@ -1280,7 +1279,7 @@ NodePCCC.prototype.writeResponse = function(data, foundSeqNum) {
 	var self = this;
 	var dataPointer = 21, i, anyBadQualities;
 
-	outputlog("We're in write response seq num " + foundSeqNum + " of " + self.writePacketArray.length,1,self.connectionID);
+	outputLog("We're in write response seq num " + foundSeqNum + " of " + self.writePacketArray.length,1,self.connectionID);
 
 	if (!self.writePacketArray[foundSeqNum].sent) {
 		outputLog('WARNING: Received a write packet that was not marked as sent',0,self.connectionID);
@@ -1439,7 +1438,7 @@ NodePCCC.prototype.readResponse = function(data, foundSeqNum) {
 			}
 		}
 		if (!self.isReading() && self.writeInQueue) {
-			outputlog("SendWritePacket called because write was queued.");
+			outputLog("SendWritePacket called because write was queued.");
 			self.sendWritePacket();
 		}
 	} else {

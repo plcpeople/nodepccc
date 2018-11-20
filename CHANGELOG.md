@@ -2,7 +2,11 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
-## [0.1.10] - 2018-11-24
+## [0.1.11] - 2018-11-20
+### Fixed
+- Compile issue.
+
+## [0.1.10] - 2018-11-20
 ### Fixed
 - #26: Fixed issue with not indicating bad quality on write
 - Fixed issue writing any values with an offset within the file > 254.
