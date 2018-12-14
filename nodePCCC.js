@@ -561,6 +561,9 @@ NodePCCC.prototype.prepareWritePacket = function() {
 		return undefined;
 	}
 	
+	// BUGFIX: clear old writing requests!
+	self.globalWriteBlockList.splice(0);
+	
 	// At this time we do not do write optimizations.  
 	// The reason for this is it is would cause numerous issues depending how the code was written in the PLC.
 	// If we write B3:0/0 and B3:0/1 then to optimize we would have to write all of B3:0, which also writes /2, /3...
