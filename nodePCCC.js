@@ -727,7 +727,8 @@ NodePCCC.prototype.prepareReadPacket = function() {
 				(itemList[i].fileNumber !== self.globalReadBlockList[thisBlock].fileNumber) ||			// Can't optimize across DBs
 				(!self.isOptimizableArea(itemList[i].areaPCCCCode)) || 					// May as well try to optimize everything.  
 				((itemList[i].offset - self.globalReadBlockList[thisBlock].offset + itemList[i].byteLength) > maxByteRequest) ||      	// If this request puts us over our max byte length, create a new block for consistency reasons.
-				(itemList[i].offset - (self.globalReadBlockList[thisBlock].offset + self.globalReadBlockList[thisBlock].byteLength) > self.maxGap)) {		// If our gap is large, create a new block.
+				(itemList[i].offset - (self.globalReadBlockList[thisBlock].offset + self.globalReadBlockList[thisBlock].byteLength) > self.maxGap) ||		// If our gap is large, create a new block.
+				(((itemList[i].offset - self.globalReadBlockList[thisBlock].offset) + Math.ceil(itemList[i].byteLength/itemList[i].multidtypelen))*itemList[i].multidtypelen > maxByteRequest)) {	// Verify if the whole block has more bytes than it is allowed to have.
 			// At this point we give up and create a new block.  
 			thisBlock = thisBlock + 1;
 			self.globalReadBlockList[thisBlock] = itemList[i]; // By reference.  
