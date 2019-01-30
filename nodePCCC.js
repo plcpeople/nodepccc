@@ -1281,7 +1281,7 @@ NodePCCC.prototype.findWriteIndexOfSeqNum = function(seqNum) {
 
 NodePCCC.prototype.writeResponse = function(data, foundSeqNum) {
 	var self = this;
-	var dataPointer = 21, i, anyBadQualities;
+	var dataPointer = 21, i, anyBadQualities, addressesBadQualities;
 
 	outputLog("We're in write response seq num " + foundSeqNum + " of " + self.writePacketArray.length,1,self.connectionID);
 
@@ -1329,6 +1329,7 @@ NodePCCC.prototype.writeResponse = function(data, foundSeqNum) {
 		}
 		
 		anyBadQualities = false;
+		addressesBadQualities = {};
 		
 		for (i=0;i<self.globalWriteBlockList.length;i++) {
 			// Post-process the write code and apply the quality.  
@@ -1336,6 +1337,7 @@ NodePCCC.prototype.writeResponse = function(data, foundSeqNum) {
 			writePostProcess(self.globalWriteBlockList[i]);
 			for (var k = 0; k < self.globalWriteBlockList[i].itemReference.length; k++) {
 				outputLog(self.globalWriteBlockList[i].itemReference[k].addr + ' write completed with quality ' + self.globalWriteBlockList[i].itemReference[k].writeQuality, 0);
+				addressesBadQualities[self.globalWriteBlockList[i].itemReference[k].addr] = !isQualityOK(self.globalWriteBlockList[i].itemReference[k].writeQuality);
 				if (!isQualityOK(self.globalWriteBlockList[i].itemReference[k].writeQuality)) {
 					anyBadQualities = true;
 				}
@@ -1344,7 +1346,7 @@ NodePCCC.prototype.writeResponse = function(data, foundSeqNum) {
 //			if (!isQualityOK(self.globalWriteBlockList[i].writeQuality)) { anyBadQualities = true; }
 		}
 		if (typeof(self.writeDoneCallback) === 'function') {
-			self.writeDoneCallback(anyBadQualities);
+			self.writeDoneCallback(anyBadQualities, addressesBadQualities);
 		}
 		if (self.resetPending) {
 			self.resetNow();
