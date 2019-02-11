@@ -2,6 +2,11 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## [0.1.13] - 2019-02-11
+### Fixed
+- Bug in prepareReadPacket related to packet length fixed (Thanks to Lucasrsv1)
+- Bad quality details added to writeDoneCallback (Thanks to Lucasrsv1)
+
 ## [0.1.12] - 2018-12-17
 ### Fixed
 - Ghost write issue (Thanks to Lucasrsv1)
