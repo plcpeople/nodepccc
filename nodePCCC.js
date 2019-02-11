@@ -727,7 +727,8 @@ NodePCCC.prototype.prepareReadPacket = function() {
 				(itemList[i].fileNumber !== self.globalReadBlockList[thisBlock].fileNumber) ||			// Can't optimize across DBs
 				(!self.isOptimizableArea(itemList[i].areaPCCCCode)) || 					// May as well try to optimize everything.  
 				((itemList[i].offset - self.globalReadBlockList[thisBlock].offset + itemList[i].byteLength) > maxByteRequest) ||      	// If this request puts us over our max byte length, create a new block for consistency reasons.
-				(itemList[i].offset - (self.globalReadBlockList[thisBlock].offset + self.globalReadBlockList[thisBlock].byteLength) > self.maxGap)) {		// If our gap is large, create a new block.
+				(itemList[i].offset - (self.globalReadBlockList[thisBlock].offset + self.globalReadBlockList[thisBlock].byteLength) > self.maxGap) ||		// If our gap is large, create a new block.
+				(((itemList[i].offset - self.globalReadBlockList[thisBlock].offset) + Math.ceil(itemList[i].byteLength/itemList[i].multidtypelen))*itemList[i].multidtypelen > maxByteRequest)) {	// Verify if the whole block has more bytes than it is allowed to have.
 			// At this point we give up and create a new block.  
 			thisBlock = thisBlock + 1;
 			self.globalReadBlockList[thisBlock] = itemList[i]; // By reference.  
@@ -1280,7 +1281,7 @@ NodePCCC.prototype.findWriteIndexOfSeqNum = function(seqNum) {
 
 NodePCCC.prototype.writeResponse = function(data, foundSeqNum) {
 	var self = this;
-	var dataPointer = 21, i, anyBadQualities;
+	var dataPointer = 21, i, anyBadQualities, addressesBadQualities;
 
 	outputLog("We're in write response seq num " + foundSeqNum + " of " + self.writePacketArray.length,1,self.connectionID);
 
@@ -1328,6 +1329,7 @@ NodePCCC.prototype.writeResponse = function(data, foundSeqNum) {
 		}
 		
 		anyBadQualities = false;
+		addressesBadQualities = {};
 		
 		for (i=0;i<self.globalWriteBlockList.length;i++) {
 			// Post-process the write code and apply the quality.  
@@ -1335,6 +1337,7 @@ NodePCCC.prototype.writeResponse = function(data, foundSeqNum) {
 			writePostProcess(self.globalWriteBlockList[i]);
 			for (var k = 0; k < self.globalWriteBlockList[i].itemReference.length; k++) {
 				outputLog(self.globalWriteBlockList[i].itemReference[k].addr + ' write completed with quality ' + self.globalWriteBlockList[i].itemReference[k].writeQuality, 0);
+				addressesBadQualities[self.globalWriteBlockList[i].itemReference[k].addr] = !isQualityOK(self.globalWriteBlockList[i].itemReference[k].writeQuality);
 				if (!isQualityOK(self.globalWriteBlockList[i].itemReference[k].writeQuality)) {
 					anyBadQualities = true;
 				}
@@ -1343,7 +1346,7 @@ NodePCCC.prototype.writeResponse = function(data, foundSeqNum) {
 //			if (!isQualityOK(self.globalWriteBlockList[i].writeQuality)) { anyBadQualities = true; }
 		}
 		if (typeof(self.writeDoneCallback) === 'function') {
-			self.writeDoneCallback(anyBadQualities);
+			self.writeDoneCallback(anyBadQualities, addressesBadQualities);
 		}
 		if (self.resetPending) {
 			self.resetNow();
