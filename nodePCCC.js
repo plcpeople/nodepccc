@@ -227,11 +227,13 @@ NodePCCC.prototype.packetTimeout = function(packetType, packetSeqNum) {
 	if (packetType === "read") {
 		outputLog("READ TIMEOUT on sequence number " + packetSeqNum,0,self.connectionID);
 		self.readResponse(undefined, self.findReadIndexOfSeqNum(packetSeqNum));
+		self.connectionReset(); // Added Aug 21 2019 but needs more testing.
 		return undefined;
 	}
 	if (packetType === "write") {
 		outputLog("WRITE TIMEOUT on sequence number " + packetSeqNum,0,self.connectionID);
 		self.writeResponse(undefined, self.findWriteIndexOfSeqNum(packetSeqNum));
+		self.connectionReset(); // Added Aug 21 2019 but needs more testing.
 		return undefined;
 	}	
 	outputLog("Unknown timeout error.  Nothing was done - this shouldn't happen.",0,self.connectionID);
