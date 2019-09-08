@@ -227,13 +227,19 @@ NodePCCC.prototype.packetTimeout = function(packetType, packetSeqNum) {
 	if (packetType === "read") {
 		outputLog("READ TIMEOUT on sequence number " + packetSeqNum,0,self.connectionID);
 		self.readResponse(undefined, self.findReadIndexOfSeqNum(packetSeqNum));
-		self.connectionReset(); // Added Aug 21 2019 but needs more testing.
+		if (self.isoConnectionState === 4) {
+			outputLog("ConnectionReset from read packet timeout.", 0, self.connectionID);
+			self.connectionReset(); // Added Aug 21 2019 but needs more testing.
+		}
 		return undefined;
 	}
 	if (packetType === "write") {
 		outputLog("WRITE TIMEOUT on sequence number " + packetSeqNum,0,self.connectionID);
 		self.writeResponse(undefined, self.findWriteIndexOfSeqNum(packetSeqNum));
-		self.connectionReset(); // Added Aug 21 2019 but needs more testing.
+		if (self.isoConnectionState === 4) {
+			outputLog("ConnectionReset from write packet timeout.", 0, self.connectionID);
+			self.connectionReset(); // Added Aug 21 2019 but needs more testing.
+		}
 		return undefined;
 	}	
 	outputLog("Unknown timeout error.  Nothing was done - this shouldn't happen.",0,self.connectionID);
@@ -1298,7 +1304,7 @@ NodePCCC.prototype.writeResponse = function(data, foundSeqNum) {
 	
 	for (itemCount = 0; itemCount < self.writePacketArray[foundSeqNum].itemList.length; itemCount++) {
 //		outputLog('Pointer is ' + dataPointer);
-		dataPointer = processSLCWriteItem(data, self.writePacketArray[foundSeqNum].itemList[itemCount], dataPointer);
+		dataPointer = processSLCWriteItem(data, self.writePacketArray[foundSeqNum].itemList[itemCount], dataPointer,self.connectionID);
 		if (!dataPointer) {
 			outputLog('Stopping Processing Write Response Packet due to unrecoverable packet error');
 			break;
@@ -1377,7 +1383,7 @@ NodePCCC.prototype.readResponse = function(data, foundSeqNum) {
 	}
 	
 	for (itemCount = 0; itemCount < self.readPacketArray[foundSeqNum].itemList.length; itemCount++) {
-		dataPointer = processSLCPacket(data, self.readPacketArray[foundSeqNum].itemList[itemCount], dataPointer);
+		dataPointer = processSLCPacket(data, self.readPacketArray[foundSeqNum].itemList[itemCount], dataPointer,self.connectionID);
 		if (!dataPointer && typeof(data) !== "undefined") {
 			// Don't bother showing this message on timeout.
 			outputLog('Received a ZERO RESPONSE Processing Read Packet due to unrecoverable packet error');
@@ -1420,7 +1426,7 @@ NodePCCC.prototype.readResponse = function(data, foundSeqNum) {
 			// For each ITEM reference pointed to by the block, we process the item. 
 			for (var k=0;k<self.globalReadBlockList[i].itemReference.length;k++) {
 //				outputLog(self.globalReadBlockList[i].itemReference[k].byteBuffer);
-				processSLCReadItem(self.globalReadBlockList[i].itemReference[k]);
+				processSLCReadItem(self.globalReadBlockList[i].itemReference[k],self.connectionID);
 				outputLog('Address ' + self.globalReadBlockList[i].itemReference[k].addr + ' has value ' + self.globalReadBlockList[i].itemReference[k].value + ' and quality ' + self.globalReadBlockList[i].itemReference[k].quality,1,self.connectionID);
 				if (!isQualityOK(self.globalReadBlockList[i].itemReference[k].quality)) { 
 					anyBadQualities = true; 
@@ -1541,12 +1547,12 @@ function doneSending(element) {
 	return ((element.sent && element.rcvd) ? true : false);
 }
 
-function processSLCPacket(theData, theItem, thePointer) {
+function processSLCPacket(theData, theItem, thePointer, theCID) {
 	var remainingLength;
 	
 	if (typeof(theData) === "undefined") {
 		remainingLength = 0;
-//		outputLog("Processing an undefined packet, likely due to timeout error");
+//		outputLog("Processing an undefined packet, likely due to timeout error", 0, theCID);
 	} else {
 		remainingLength = theData.length;
 	}
@@ -1561,10 +1567,10 @@ function processSLCPacket(theData, theItem, thePointer) {
 		theItem.valid = false;
 		if (typeof(theData) !== "undefined") {
 			theItem.errCode = 'Malformed PCCC Part - Less Than 9 Bytes.  TDL' + theData.length + 'TP' + thePointer + 'RL' + remainingLength;
-			outputLog(theItem.errCode,0);  // Can't log more info here as we dont have "self" info
+			outputLog(theItem.errCode, 0, theCID);
 		} else {
 			theItem.errCode = "Timeout error - zero length packet";
-			outputLog(theItem.errCode,1);  // Can't log more info here as we dont have "self" info
+			outputLog(theItem.errCode, 1, theCID);
 		}
 		return 0;   			// Hard to increment the pointer so we call it a malformed packet and we're done.      
 	}
@@ -1573,14 +1579,14 @@ function processSLCPacket(theData, theItem, thePointer) {
 	if (theData[0] !== 0x07 || theData[7] !== 0x4f) {
 		theItem.valid = false;
 		theItem.errCode = 'Invalid PCCC - Expected [0] to be 0x07 and [7] to be 0x4f - got ' + theData[0] + ' and ' + theData[7];
-		outputLog(theItem.errCode);
+		outputLog(theItem.errCode, 0, theCID);
 		return 1; //thePointer + reportedDataLength + 4;
 	}
 	
 	if (theData[8] !== 0x00) {
 		theItem.valid = false;
 		theItem.errCode = 'PCCC Error Response - Code ' + theData[8];
-		outputLog(theItem.errCode);
+		outputLog(theItem.errCode, 0, theCID);
 		return 1; //thePointer + reportedDataLength + 4;   			      
 	}	
 
@@ -1592,7 +1598,7 @@ function processSLCPacket(theData, theItem, thePointer) {
 	if (theData.length - 11 !== expectedLength) {
 		theItem.valid = false;
 		theItem.errCode = 'Invalid Response Length - Expected ' + expectedLength + ' but got ' + (theData.length - 11) + ' bytes.';
-		outputLog(theItem.errCode);
+		outputLog(theItem.errCode, 0, theCID);
 		return 1;  
 	}	
 
@@ -1605,8 +1611,8 @@ function processSLCPacket(theData, theItem, thePointer) {
 	theItem.valid = true;
 	theItem.byteBuffer = theData.slice(11); // This means take to end.
 	
-	outputLog('Byte Buffer is:',2);
-	outputLog(theItem.byteBuffer,2);
+	outputLog('Byte Buffer is:', 2, theCID);
+	outputLog(theItem.byteBuffer, 2, theCID);
 	
 	theItem.qualityBuffer.fill(0xC0);  // Fill with 0xC0 (192) which means GOOD QUALITY in the OPC world.  
 	
@@ -1621,7 +1627,7 @@ function processSLCPacket(theData, theItem, thePointer) {
 	return -1; //thePointer;
 }
 
-function processSLCWriteItem(theData, theItem, thePointer) {
+function processSLCWriteItem(theData, theItem, thePointer, theCID) {
 	
 //	var remainingLength = theData.length - thePointer;  // Say if length is 39 and pointer is 35 we can access 35,36,37,38 = 4 bytes.  
 //	var prePointer = thePointer;
@@ -1629,7 +1635,7 @@ function processSLCWriteItem(theData, theItem, thePointer) {
 	if (typeof(theData) === "undefined") { // Expected if communication failure
 		theItem.valid = false;
 		theItem.errCode = 'No communication to PLC.';
-		outputLog(theItem.errCode);
+		outputLog(theItem.errCode, 0, theCID);
 		theItem.writeQualityBuffer.fill(0xFF);
 		return 0;
 	}
@@ -1638,7 +1644,7 @@ function processSLCWriteItem(theData, theItem, thePointer) {
 	if (theData.length < 1 || theData.length < (theData[0] + 4) || theData[theData[0]] !== 0x4f) {  // Should be at least 11 bytes with 7 byte header
 		theItem.valid = false;
 		theItem.errCode = 'Malformed Reply PCCC Packet - Less Than 1 Byte or Malformed Header.  ' + theData;
-		outputLog(theItem.errCode);
+		outputLog(theItem.errCode, 0, theCID);
 		theItem.writeQualityBuffer.fill(0xFF);
 		return 0;   			// Hard to increment the pointer so we call it a malformed packet and we're done.      
 	}
@@ -1648,7 +1654,7 @@ function processSLCWriteItem(theData, theItem, thePointer) {
 	theItem.writeResponse = theData.readUInt8(theData[0] + 1);
 	
 	if (writeResponse !== 0x00) {
-		outputLog ('Received write error of ' + theItem.writeResponse + ' on ' + theItem.addr);
+		outputLog ('Received write error of ' + theItem.writeResponse + ' on ' + theItem.addr, 0, theCID);
 		theItem.writeQualityBuffer.fill(0xFF);  // Note that ff is good in the S7 world but BAD in our fill here.  
 	} else {
 		theItem.writeQualityBuffer.fill(0xC0);
@@ -1691,7 +1697,7 @@ function writePostProcess(theItem) {
 }
 
 
-function processSLCReadItem(theItem) {
+function processSLCReadItem(theItem, theCID) {
 	
 	var thePointer = 0,strLength;
 	
@@ -1786,7 +1792,7 @@ function processSLCReadItem(theItem) {
 			theItem.quality = ('BAD ' + theItem.qualityBuffer[thePointer]);
 		} else {
 			theItem.quality = ('OK');
-			outputLog("Item Datatype (single value) is " + theItem.datatype + " and BO is " + theItem.byteOffset, 1);			
+			outputLog("Item Datatype (single value) is " + theItem.datatype + " and BO is " + theItem.byteOffset, 1, theCID);			
 			switch(theItem.datatype) {
 
 			case "REAL":
@@ -1841,7 +1847,7 @@ function processSLCReadItem(theItem) {
 				}
 				break;			
 			default:
-				outputLog("Unknown data type in response - should never happen.  Should have been caught earlier.  " + theItem.datatype);
+				outputLog("Unknown data type in response - should never happen.  Should have been caught earlier.  " + theItem.datatype, 0 , theCID);
 				return 0;		
 			}
 		}
