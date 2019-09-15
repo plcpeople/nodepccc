@@ -226,20 +226,20 @@ NodePCCC.prototype.packetTimeout = function(packetType, packetSeqNum) {
 	}
 	if (packetType === "read") {
 		outputLog("READ TIMEOUT on sequence number " + packetSeqNum,0,self.connectionID);
-		self.readResponse(undefined, self.findReadIndexOfSeqNum(packetSeqNum));
-		if (self.isoConnectionState === 4) {
+		if (self.isoConnectionState === 4) { // We do a connection reset before we call the response to make sure resetNow is called this cycle, not next.
 			outputLog("ConnectionReset from read packet timeout.", 0, self.connectionID);
 			self.connectionReset(); // Added Aug 21 2019 but needs more testing.
 		}
+		self.readResponse(undefined, self.findReadIndexOfSeqNum(packetSeqNum));
 		return undefined;
 	}
 	if (packetType === "write") {
 		outputLog("WRITE TIMEOUT on sequence number " + packetSeqNum,0,self.connectionID);
-		self.writeResponse(undefined, self.findWriteIndexOfSeqNum(packetSeqNum));
-		if (self.isoConnectionState === 4) {
+		if (self.isoConnectionState === 4) { // We do a connection reset before we call the response to make sure resetNow is called this cycle, not next.
 			outputLog("ConnectionReset from write packet timeout.", 0, self.connectionID);
 			self.connectionReset(); // Added Aug 21 2019 but needs more testing.
 		}
+		self.writeResponse(undefined, self.findWriteIndexOfSeqNum(packetSeqNum));
 		return undefined;
 	}	
 	outputLog("Unknown timeout error.  Nothing was done - this shouldn't happen.",0,self.connectionID);
@@ -1313,7 +1313,7 @@ NodePCCC.prototype.writeResponse = function(data, foundSeqNum) {
 
 	// Make a note of the time it took the PLC to process the request.  
 	self.writePacketArray[foundSeqNum].reqTime = process.hrtime(self.writePacketArray[foundSeqNum].reqTime);
-	outputLog('Time is ' + self.writePacketArray[foundSeqNum].reqTime[0] + ' seconds and ' + Math.round(self.writePacketArray[foundSeqNum].reqTime[1]*10/1e6)/10 + ' ms.',1);
+	outputLog('Time is ' + self.writePacketArray[foundSeqNum].reqTime[0] + ' seconds and ' + Math.round(self.writePacketArray[foundSeqNum].reqTime[1]*10/1e6)/10 + ' ms.',1,self.connectionID);
 
 //	writePacketArray.splice(foundSeqNum, 1);
 	if (!self.writePacketArray[foundSeqNum].rcvd) {
@@ -1330,7 +1330,7 @@ NodePCCC.prototype.writeResponse = function(data, foundSeqNum) {
 // Uncomment for debug			console.log("i is " + blah + " and rcvd is " + self.writePacketArray[blah].rcvd + " and sent is " + self.writePacketArray[blah].sent);
 // Uncomment for debug		}
 	} else {
-		outputLog("Sending more packets from writeResponse",1,self.connectionID);
+		outputLog("Received all packets in writeResponse",1,self.connectionID);
 		for (i=0;i<self.writePacketArray.length;i++) {
 			self.writePacketArray[i].sent = false;
 			self.writePacketArray[i].rcvd = false;				
@@ -1344,7 +1344,7 @@ NodePCCC.prototype.writeResponse = function(data, foundSeqNum) {
 			// Loop through the global block list...
 			writePostProcess(self.globalWriteBlockList[i]);
 			for (var k = 0; k < self.globalWriteBlockList[i].itemReference.length; k++) {
-				outputLog(self.globalWriteBlockList[i].itemReference[k].addr + ' write completed with quality ' + self.globalWriteBlockList[i].itemReference[k].writeQuality, 0);
+				outputLog(self.globalWriteBlockList[i].itemReference[k].addr + ' write completed with quality ' + self.globalWriteBlockList[i].itemReference[k].writeQuality, 0, self.connectionID);
 				addressesBadQualities[self.globalWriteBlockList[i].itemReference[k].addr] = !isQualityOK(self.globalWriteBlockList[i].itemReference[k].writeQuality);
 				if (!isQualityOK(self.globalWriteBlockList[i].itemReference[k].writeQuality)) {
 					anyBadQualities = true;
@@ -1353,14 +1353,16 @@ NodePCCC.prototype.writeResponse = function(data, foundSeqNum) {
 //			outputLog(self.globalWriteBlockList[i].addr + ' write completed with quality ' + self.globalWriteBlockList[i].writeQuality,0);
 //			if (!isQualityOK(self.globalWriteBlockList[i].writeQuality)) { anyBadQualities = true; }
 		}
-		if (typeof(self.writeDoneCallback) === 'function') {
-			self.writeDoneCallback(anyBadQualities, addressesBadQualities);
-		}
-		if (self.resetPending) {
+		if (self.resetPending) { // We need to do this reset before we call the callback as the callback may directly call another read or write.
+			outputLog('Calling reset from writeResponse as there is one pending',0,self.connectionID);
 			self.resetNow();
 		}
 		if (self.isoConnectionState === 0) {
 			self.connectNow(self.connectionParams, false);
+		}
+		outputLog('We are calling back our writeDoneCallback.',1,self.connectionID);
+		if (typeof(self.writeDoneCallback) === 'function') {
+			self.writeDoneCallback(anyBadQualities, addressesBadQualities);
 		}
 	}
 }
@@ -1439,18 +1441,23 @@ NodePCCC.prototype.readResponse = function(data, foundSeqNum) {
 		
 		// Inform our user that we are done and that the values are ready for pickup.
 
-		outputLog("We are calling back our readDoneCallback.",1,self.connectionID);
-		if (typeof(self.readDoneCallback) === 'function') {
-			self.readDoneCallback(anyBadQualities, dataObject, self.isoConnectionState !== 4);
-		}
 		if (!self.writeInQueue) {
 			if (self.resetPending) {
+				outputLog('Calling reset from readResponse as there is one pending',0,self.connectionID);
 				self.resetNow();
 			}
 			if (self.isoConnectionState === 0) {
 				self.connectNow(self.connectionParams, false);
 			}
+		} else {
+			outputLog('Write In Queue.  ICS ' + self.isoConnectionState + ' resetPending ' + self.resetPending,1,self.connectionID);		
 		}
+
+		outputLog("We are calling back our readDoneCallback.",1,self.connectionID);
+		if (typeof(self.readDoneCallback) === 'function') {
+			self.readDoneCallback(anyBadQualities, dataObject, self.isoConnectionState !== 4);
+		}
+
 		if (!self.isReading() && self.writeInQueue) {
 			outputLog("SendWritePacket called because write was queued.");
 			self.sendWritePacket();
@@ -1488,9 +1495,11 @@ NodePCCC.prototype.connectionReset = function() {
 	var self = this;
 	self.isoConnectionState = 0;
 	self.resetPending = true;
-	outputLog('ConnectionReset is happening');
+	outputLog('ConnectionReset has been called to set the reset as pending',0,self.connectionID);
 	if (!self.isReading() && !self.isWriting() && !self.writeInQueue && typeof(self.resetTimeout) === 'undefined') {
+		outputLog('Scheduling the reset for 4.5 seconds later.');
 		self.resetTimeout = setTimeout(function() {
+			outputLog('Timed reset has happened. Ideally this would never be called as reset should be completed when done r/w.',0,self.connectionID);
 			self.resetNow.apply(self, arguments);
 		} ,4500);  // Increased to 4500 to try to prevent issues with packet timeouts.
 	}
@@ -1502,14 +1511,14 @@ NodePCCC.prototype.resetNow = function() {
 	self.isoConnectionState = 0;
 	self.isoclient.end();
 	self.isoclient.destroy();
-	outputLog('ResetNOW is happening');
+	outputLog('ResetNOW is happening',0,self.connectionID);
 	self.resetPending = false;
 	// In some cases, we can have a timeout scheduled for a reset, but we don't want to call it again in that case.
 	// We only want to call a reset just as we are returning values.  Otherwise, we will get asked to read // more values and we will "break our promise" to always return something when asked. 
 	if (typeof(self.resetTimeout) !== 'undefined') {
 		clearTimeout(self.resetTimeout);
 		self.resetTimeout = undefined;
-		outputLog('Clearing an earlier scheduled reset');
+		outputLog('Clearing an earlier scheduled reset',0,self.connectionID);
 	}
 }
 

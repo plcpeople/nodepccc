@@ -2,6 +2,10 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## [0.1.16] - 2019-09-14
+### Changed
+- More changes to reset for Node Red compatibility
+
 ## [0.1.15] - 2019-09-08
 ### Changed
 - Modified read/write timeout again for improved reliability on reconnect
