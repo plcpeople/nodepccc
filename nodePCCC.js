@@ -285,7 +285,8 @@ NodePCCC.prototype.onEIPConnectReply = function(data) {
 	
 	// Track the connection state
 	self.isoConnectionState = 4;  // 4 = Good to go.  (No PDU with EIP so 3 is an invalid state) 
-	
+	self.parallelJobsNow = 0;  // Reset on connect
+
 	// First we check our error code in the EIP section.  
 	if (data[8] !== 0x00 || data[9] !== 0x00 || data[10] !== 0x00 || data[11] !== 0x00) {
 		outputLog('ERROR RECEIVED IN REGISTER SESSION RESPONSE PACKET - DISCONNECTING');

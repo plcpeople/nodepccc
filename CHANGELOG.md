@@ -2,6 +2,10 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## [0.1.17] - 2019-11-09
+### Changed
+- Zero the parallel job counter when connection established
+
 ## [0.1.16] - 2019-09-14
 ### Changed
 - More changes to reset for Node Red compatibility
