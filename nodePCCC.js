@@ -38,12 +38,24 @@ var silentMode = false;
 
 module.exports = NodePCCC;
 
+/**
+ * 
+ * @param {object} [opts] 
+ * @param {boolean} [opts.silent=false] supress all logging
+ * @param {boolean} [opts.debug] logs debug messages
+ * @param {string} [opts.commandSet="SLC"] the command set used to communicate with the PLC. Possible values are "SLC" and "PLC-5/ASCII"
+ */
 function NodePCCC(opts){
 	var self = this;
 
 	opts = opts || {};
 	silentMode = opts.silent || false;
 	effectiveDebugLevel = opts.debug ? 99 : 0;
+
+	self.commandSet = opts.commandSet || "SLC";
+	if (self.commandSet !== "SLC" && self.commandSet !== "PLC-5/ASCII") {
+		throw new Error("Unsupported command set: " + self.commandSet);
+	}
 
 	self.connectReq   = new Buffer([0x65,0x00,0x04,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f,0x0a,0x0b,0x00,0x00,0x00,0x00,0x01,0x00,0x00,0x00]);
 							
@@ -131,6 +143,7 @@ NodePCCC.prototype.initiateConnection = function (cParam, callback) {
 	if (cParam === undefined) { cParam = {port: 44818, host: '192.168.8.106'}; }
 	outputLog('Initiate Called - Connecting to PLC with address and parameters:');
 	outputLog(cParam);
+	outputLog('Using command set: ' + self.commandSet);
 	if (typeof(cParam.name) === 'undefined') {
 		self.connectionID = cParam.host;
 	} else {
@@ -899,9 +912,16 @@ NodePCCC.prototype.sendReadPacket = function() {
 
 		// The FOR loop is left in here for now, but really we are only doing one request per packet for now.  
 		for (j = 0; j < self.readPacketArray[i].itemList.length; j++) {
-			returnedBfr = SLCAddrToBufferA2(self.readPacketArray[i].itemList[j], false);
+			switch(self.commandSet){
+				case "PLC-5/ASCII":
+					returnedBfr = SLCAddrToBuffer01(self.readPacketArray[i].itemList[j], false);
+					break;
+				case "SLC":
+				default:
+					returnedBfr = SLCAddrToBufferA2(self.readPacketArray[i].itemList[j], false);
+			}
 
-			outputLog('The A2 Returned Buffer is:',2);
+			outputLog('The returned read buffer is:',2);
 			outputLog(returnedBfr, 2);
 			outputLog("The returned buffer length is " + returnedBfr.length, 2);
 			
@@ -2047,6 +2067,38 @@ function isQualityOK(obj) {
 		}
 	}
 	return true;
+}
+
+function SLCAddrToBuffer01(addrinfo, isWriting) {
+	// Word range read, for PLC-5 and PLC-5/250
+
+	var addr = addrinfo.addr;
+	var bufLen = 10 + addr.length;
+	var readLen = addrinfo.byteLength;
+	readLen += (readLen % 2); //rounds up for the number of words
+	
+	var buffer = new Buffer(bufLen);
+	var ptr = 0;
+
+	//FNC Word Range Read
+	buffer.writeUInt8(0x01, ptr);
+	ptr += 1;
+	// packet offset
+	buffer.writeUInt16LE(0, ptr);
+	ptr += 2;
+	// total transaction (number of words)
+	buffer.writeUInt16LE(readLen / 2, ptr);
+	ptr += 2;
+	// PLC-5 address
+	buffer.writeUInt8(0, ptr++);
+	buffer.writeUInt8(0x24, ptr++); // '$'
+	buffer.write(addr, ptr, 'ascii');
+	ptr += addr.length;
+	buffer.writeUInt8(0, ptr++);
+	// size (number of bytes)
+	buffer.writeUInt8(readLen, ptr);
+
+	return buffer;
 }
 
 function SLCAddrToBufferA2(addrinfo, isWriting) {
